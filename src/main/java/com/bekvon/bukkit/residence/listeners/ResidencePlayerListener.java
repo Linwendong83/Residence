@@ -112,6 +112,9 @@ import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ResidencePlayerListener implements Listener {
 
+    private static final double MAX_SLIME_BOUNCE_DISTANCE = 52.5787915638948D;
+    private static final double MAX_SLIME_BOUNCE_VELOCITY = 3.55794529641779D;
+
     private Residence plugin;
 
     private PlayerLocationChecker locationChecker = new PlayerLocationChecker();
@@ -2234,7 +2237,7 @@ public class ResidencePlayerListener implements Listener {
 //
 //		playerTempData.get(player).setLastUpdate(System.currentTimeMillis());
 
-        boolean handled = handleNewLocation(player, locto, true);
+        boolean handled = handleNewLocation(player, locfrom, locto, true);
 
         if (!handled)
             event.setCancelled(true);
@@ -2377,6 +2380,108 @@ public class ResidencePlayerListener implements Listener {
         plugin.getSelectionManager().showBounds(player, v);
     }
 
+    private boolean tryBounce(Player player, ClaimedResidence res, Location from, Location to) {
+        if (from == null)
+            return false;
+
+        if (from.getWorld() == null || !from.getWorld().equals(to.getWorld()))
+            return false;
+
+        if (player.getVehicle() != null || player.getGameMode() == GameMode.SPECTATOR)
+            return false;
+
+        // Reflection is only meaningful when entering from outside the residence
+        if (res.getAreaByLoc(from) != null)
+            return false;
+
+        Vector velocity = to.toVector().subtract(from.toVector());
+        if (velocity.lengthSquared() < 1e-12)
+            return false;
+
+        double[] pos = { from.getX(), from.getY(), from.getZ() };
+        double[] dir = { velocity.getX(), velocity.getY(), velocity.getZ() };
+
+        double bestEntry = Double.MAX_VALUE;
+        int bestAxis = -1;
+
+        for (CuboidArea area : res.getAreaArray()) {
+            // containsLoc works on block coordinates, so the protected volume is [low, high + 1) on each axis
+            double[] min = { area.getLowVector().getBlockX(), area.getLowVector().getBlockY(), area.getLowVector().getBlockZ() };
+            double[] max = { area.getHighVector().getBlockX() + 1D, area.getHighVector().getBlockY() + 1D, area.getHighVector().getBlockZ() + 1D };
+
+            double tEntry = -Double.MAX_VALUE;
+            double tExit = Double.MAX_VALUE;
+            int entryAxis = -1;
+            boolean miss = false;
+
+            for (int axis : new int[] { 1, 0, 2 }) {
+                if (Math.abs(dir[axis]) < 1e-9) {
+                    if (pos[axis] < min[axis] || pos[axis] >= max[axis]) {
+                        miss = true;
+                        break;
+                    }
+                    continue;
+                }
+                double t0 = (min[axis] - pos[axis]) / dir[axis];
+                double t1 = (max[axis] - pos[axis]) / dir[axis];
+                if (t0 > t1) {
+                    double swap = t0;
+                    t0 = t1;
+                    t1 = swap;
+                }
+                if (t0 > tEntry) {
+                    tEntry = t0;
+                    entryAxis = axis;
+                }
+                if (t1 < tExit)
+                    tExit = t1;
+            }
+
+            if (miss || entryAxis == -1 || tEntry > tExit || tEntry < 0 || tEntry > 1 + 1e-7)
+                continue;
+
+            if (tEntry < bestEntry) {
+                bestEntry = tEntry;
+                bestAxis = entryAxis;
+            }
+        }
+
+        if (bestAxis == -1)
+            return false;
+
+        switch (bestAxis) {
+        case 0:
+            velocity.setX(-velocity.getX());
+            break;
+        case 1:
+            velocity.setY(-velocity.getY());
+            break;
+        default:
+            velocity.setZ(-velocity.getZ());
+            break;
+        }
+
+        // Vanilla slime blocks bounce living entities at 1.0x vertical speed.
+        // The hard cap mirrors the maximum vanilla slime rebound from world top to bottom
+        // (382 blocks, excluding the bottom bedrock layer): ~52.5787915638948 blocks.
+        if (velocity.length() > MAX_SLIME_BOUNCE_VELOCITY)
+            velocity.normalize().multiply(MAX_SLIME_BOUNCE_VELOCITY);
+
+        // Bouncing off the top face replaces the landing which would have reset fall distance
+        final boolean resetFall = bestAxis == 1 && dir[1] < 0;
+
+        // Same-tick velocity gets discarded by the position sync of the cancelled move event
+        CMIScheduler.runAtEntityLater(plugin, player, () -> {
+            if (!player.isOnline())
+                return;
+            if (resetFall)
+                player.setFallDistance(0F);
+            player.setVelocity(velocity);
+        }, 1L);
+
+        return true;
+    }
+
     private void informOnMoveDeny(Player player, ClaimedResidence res) {
 
         switch (plugin.getConfigManager().getGeneralMessageType()) {
@@ -2395,6 +2500,10 @@ public class ResidencePlayerListener implements Listener {
     }
 
     public boolean handleNewLocation(final Player player, Location loc, boolean move) {
+        return handleNewLocation(player, null, loc, move);
+    }
+
+    public boolean handleNewLocation(final Player player, Location from, Location loc, boolean move) {
 
         ClaimedResidence res = plugin.getResidenceManager().getByLoc(loc);
 
@@ -2447,6 +2556,16 @@ public class ResidencePlayerListener implements Listener {
             if (res.getRaid().isUnderRaid() && (res.getRaid().isAttacker(player.getUniqueId()) || res.getRaid().isDefender(player.getUniqueId())))
                 return true;
 
+            StuckInfo info = updateStuckTeleport(player, loc);
+
+            // Rapid deny loops (velocity blocked or ignored) fall back to the teleport below
+            if ((info == null || info.getTimesTeleported() <= 12) && tryBounce(player, res, from, loc)) {
+                bounceAnimation(player, res);
+                String resName = res.getName();
+                CMIScheduler.runTaskAsynchronously(plugin, () -> lm.Residence_MoveDeny.sendMessage(player, resName));
+                return false;
+            }
+
             Location lastLoc = tempData.getLastValidLocation(player);
 
             if (lastLoc == null)
@@ -2462,7 +2581,6 @@ public class ResidencePlayerListener implements Listener {
                 return false;
             }
 
-            StuckInfo info = updateStuckTeleport(player, loc);
             player.closeInventory();
 
             if (player.getVehicle() != null)
