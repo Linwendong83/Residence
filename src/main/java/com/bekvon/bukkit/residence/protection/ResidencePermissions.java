@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -18,6 +19,7 @@ import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.commands.padd;
 import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.Flags.FlagMode;
+import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.ResidencePlayer;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.event.ResidenceFlagChangeEvent;
@@ -28,6 +30,7 @@ import com.bekvon.bukkit.residence.permissions.PermissionGroup;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 
 import net.Zrips.CMILib.Locale.LC;
+import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ResidencePermissions extends FlagPermissions {
 
@@ -37,6 +40,7 @@ public class ResidencePermissions extends FlagPermissions {
     private ClaimedResidence residence;
 
     private static boolean suspendEventCalls = false;
+    private final Set<UUID> pendingMoveChecks = ConcurrentHashMap.newKeySet();
 
     private ResidencePermissions(ClaimedResidence res) {
         super();
@@ -479,6 +483,8 @@ public class ResidencePermissions extends FlagPermissions {
                     }
                 }
 
+                scheduleMoveCheck(targetPlayerUUID, flag, state);
+
                 return true;
             }
         }
@@ -525,6 +531,7 @@ public class ResidencePermissions extends FlagPermissions {
                 }
                 if (super.setGroupFlag(group, flag, flagstate)) {
                     lm.Flag_Set.sendMessage(player, flag, residence.getName(), flagstate);
+                    scheduleMoveChecks(flag, flagstate);
                     return true;
                 }
             } else {
@@ -599,6 +606,7 @@ public class ResidencePermissions extends FlagPermissions {
                         break;
                     }
                 }
+                scheduleMoveChecks(flag, state);
                 return true;
             }
         }
@@ -620,7 +628,7 @@ public class ResidencePermissions extends FlagPermissions {
                     return false;
                 }
             }
-            super.removeAllPlayerFlags(targetPlayerUUID);
+            this.removeAllPlayerFlags(targetPlayerUUID);
             lm.Flag_RemovedAll.sendMessage(sender, ResidencePlayer.getName(targetPlayerUUID), this.residence.getName());
             return true;
         }
@@ -636,7 +644,7 @@ public class ResidencePermissions extends FlagPermissions {
                     return false;
                 }
             }
-            super.removeAllGroupFlags(group);
+            this.removeAllGroupFlags(group);
             lm.Flag_RemovedGroup.sendMessage(player, group, this.residence.getName());
             return true;
         }
@@ -651,7 +659,10 @@ public class ResidencePermissions extends FlagPermissions {
             if (fc.isCancelled())
                 return false;
         }
-        return super.setFlag(flag, state);
+        boolean changed = super.setFlag(flag, state);
+        if (changed)
+            scheduleMoveChecks(flag, state);
+        return changed;
     }
 
     @Override
@@ -662,7 +673,10 @@ public class ResidencePermissions extends FlagPermissions {
             if (fc.isCancelled())
                 return false;
         }
-        return super.setGroupFlag(group, flag, state);
+        boolean changed = super.setGroupFlag(group, flag, state);
+        if (changed)
+            scheduleMoveChecks(flag, state);
+        return changed;
     }
 
     @Override
@@ -679,7 +693,91 @@ public class ResidencePermissions extends FlagPermissions {
             if (fc.isCancelled())
                 return false;
         }
-        return super.setPlayerFlag(uuid, flag, state);
+        boolean changed = super.setPlayerFlag(uuid, flag, state);
+        if (changed && this.getPlayerFlags(uuid) != null)
+            scheduleMoveCheck(uuid, flag, state);
+        return changed;
+    }
+
+    @Override
+    public void removeAllPlayerFlags(UUID uuid) {
+        super.removeAllPlayerFlags(uuid);
+        scheduleMoveCheck(uuid);
+    }
+
+    @Override
+    public void removeAllGroupFlags(String group) {
+        super.removeAllGroupFlags(group);
+        scheduleMoveChecks();
+    }
+
+    @Override
+    public void clearFlags() {
+        super.clearFlags();
+        scheduleMoveChecks();
+    }
+
+    private void scheduleMoveCheck(UUID uuid, String flag, FlagState state) {
+        if (isPotentialMoveDeny(flag, state))
+            scheduleMoveCheck(uuid);
+    }
+
+    private void scheduleMoveChecks(String flag, FlagState state) {
+        if (isPotentialMoveDeny(flag, state))
+            scheduleMoveChecks();
+    }
+
+    private boolean isPotentialMoveDeny(String flag, FlagState state) {
+        return flag != null && flag.equalsIgnoreCase(Flags.move.toString())
+                && (state == FlagState.FALSE || state == FlagState.NEITHER);
+    }
+
+    private void scheduleMoveChecks() {
+        Residence plugin = Residence.getInstance();
+        if (plugin == null || !plugin.isFullyLoaded())
+            return;
+
+        for (Player player : Bukkit.getOnlinePlayers())
+            scheduleMoveCheck(player.getUniqueId());
+    }
+
+    private void scheduleMoveCheck(UUID uuid) {
+        Residence plugin = Residence.getInstance();
+        if (uuid == null || plugin == null || !plugin.isFullyLoaded() || !pendingMoveChecks.add(uuid))
+            return;
+
+        CMIScheduler.runTaskLater(plugin, () -> {
+            pendingMoveChecks.remove(uuid);
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || !player.isOnline())
+                return;
+
+            CMIScheduler.runAtEntity(plugin, player, () -> kickIfMoveDenied(plugin, player));
+        }, 1L);
+    }
+
+    private void kickIfMoveDenied(Residence plugin, Player player) {
+        if (!player.isOnline() || player.hasMetadata("NPC") || !Flags.move.isGlobalyEnabled()
+                || plugin.isDisabledWorldListener(player.getWorld()))
+            return;
+
+        if (!residence.containsLoc(player.getLocation()))
+            return;
+
+        ClaimedResidence current = plugin.getResidenceManager().getByLoc(player.getLocation());
+        if (current == null
+                || !current.getPermissions().playerHas(player, Flags.move, FlagCombo.OnlyFalse)
+                || ResAdmin.isResAdmin(player)
+                || current.isOwner(player)
+                || ResPerm.admin_move.hasPermission(player, 10000L))
+            return;
+
+        if (current.getRaid().isUnderRaid()
+                && (current.getRaid().isAttacker(player.getUniqueId())
+                        || current.getRaid().isDefender(player.getUniqueId())))
+            return;
+
+        current.kickFromResidence(player);
     }
 
     public void applyDefaultFlags(Player player, boolean resadmin) {
