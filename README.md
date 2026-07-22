@@ -1,5 +1,8 @@
 # Residence
 
+> [!NOTE]
+> 本仓库与上游的不同：重新检查旗帜变更后的移动权限，并修复移动被拒绝时的反弹处理。
+
 Residence is different from most protection plugins in that it allows users to protect their own homes without needing to bother the server administrator.
 
 It supports a variety of protection types, including preventing movement through protected areas. All settings can be configured by the landowner, with limits defined by the admin.
