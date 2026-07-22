@@ -195,6 +195,7 @@ jobs:
         if: steps.decide.outputs.should_build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ steps.decide.outputs.version }}
         shell: bash
         run: |
