@@ -15,6 +15,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -72,6 +73,8 @@ import net.Zrips.CMILib.Version.Version;
 import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ClaimedResidence {
+
+    private static final Set<UUID> pendingOutsideTeleports = ConcurrentHashMap.newKeySet();
 
     private String resName = null;
     protected ClaimedResidence parent;
@@ -2075,21 +2078,27 @@ public class ClaimedResidence {
         Utils.closeInventory(player);
 
         if (loc == null) {
+            UUID playerId = player.getUniqueId();
+            if (!pendingOutsideTeleports.add(playerId))
+                return true;
+
             CompletableFuture<Location> future = LocationUtil.getOutsideFreeLocASYNC(this, player, true);
 
-            future.thenAccept(loc1 -> {
-                if (loc1 == null) {
+            future.whenComplete((loc1, error) -> {
+                if (error != null || loc1 == null) {
+                    pendingOutsideTeleports.remove(playerId);
                     LC.info_IncorrectLocation.getLocale();
                     return;
                 }
 
-                loc1.add(0, 0.4, 0);
-                Teleporting.teleport(player, loc1).thenApply(success -> {
+                Teleporting.teleport(player, loc1).whenComplete((success, teleportError) -> {
+                    pendingOutsideTeleports.remove(playerId);
+                    if (teleportError != null)
+                        return;
                     if (success)
                         lm.Residence_Kicked.sendMessage(player);
                     else
                         lm.General_TeleportCanceled.sendMessage(player);
-                    return null;
                 });
             });
             return true;

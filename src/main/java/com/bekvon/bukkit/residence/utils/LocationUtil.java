@@ -1,7 +1,9 @@
 package com.bekvon.bukkit.residence.utils;
 
 import java.lang.reflect.Method;
-import java.util.Random;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import org.bukkit.Chunk;
@@ -10,18 +12,26 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.World.Environment;
+import org.bukkit.WorldBorder;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.BlockSupport;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Waterlogged;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.containers.RandomLoc;
+import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
+import com.bekvon.bukkit.residence.utils.NearestOutsideChunkIterator.BlockBounds;
+import com.bekvon.bukkit.residence.utils.NearestOutsideChunkIterator.ChunkCandidate;
 
 import net.Zrips.CMILib.Container.CMIWorld;
 import net.Zrips.CMILib.Items.CMIMC;
@@ -135,93 +145,203 @@ public class LocationUtil {
         return CompletableFuture.supplyAsync(() -> getOutsideFreeLoc(res, insideLoc, player, toSpawnOnFail));
     }
 
-    static Random ran = new Random(System.currentTimeMillis());
+    private static Location getNearestOutsideLocation(Player player, Location source, CuboidArea area) {
+        World world = area.getWorld();
+        if (world == null || source == null || source.getWorld() == null || !world.equals(source.getWorld()))
+            return null;
 
-    private static RandomLoc getRandomEdge(CuboidArea area, int it) {
-        switch (it % 4) {
-        case 0:
-            return new RandomLoc(area.getLowVector().getX() - 1, area.getLowVector().getZ() - 1 + ran.nextInt(area.getZSize() + 2));
-        case 1:
-            return new RandomLoc(area.getHighVector().getX() + 1, area.getLowVector().getZ() - 1 + ran.nextInt(area.getZSize() + 2));
-        case 2:
-            return new RandomLoc(area.getLowVector().getX() + ran.nextInt(area.getXSize()), area.getLowVector().getZ() - 1);
-        case 3:
-        default:
-            return new RandomLoc(area.getLowVector().getX() + ran.nextInt(area.getXSize()), area.getHighVector().getZ() + 1);
+        Vector low = area.getLowVector();
+        Vector high = area.getHighVector();
+        BlockBounds bounds = getWorldBorderBounds(world.getWorldBorder());
+        NearestOutsideChunkIterator chunks = new NearestOutsideChunkIterator(
+                source.getX(), source.getZ(),
+                low.getBlockX(), high.getBlockX(), low.getBlockZ(), high.getBlockZ(), bounds);
+
+        SafeColumn best = null;
+        while (chunks.hasNext()) {
+            ChunkCandidate chunkCandidate = chunks.next();
+            if (best != null && chunkCandidate.getMinimumDistanceSquared() >= best.distanceSquared)
+                break;
+
+            CMIChunkSnapShot cmiSnapshot = getSnapshot(world, chunkCandidate.getChunkX(), chunkCandidate.getChunkZ(), true, false).join();
+            if (cmiSnapshot == null || cmiSnapshot.getSnapshot() == null)
+                return null;
+
+            List<SafeColumn> candidates = getSafeColumns(
+                    cmiSnapshot.getSnapshot(), world, chunks, chunkCandidate, best == null ? Double.POSITIVE_INFINITY : best.distanceSquared);
+            SafeColumn allowed = getFirstAllowedColumn(player, candidates);
+            if (allowed != null && (best == null || allowed.distanceSquared < best.distanceSquared))
+                best = allowed;
         }
+
+        return best == null ? null : best.location;
     }
 
-    private static Location getEdgeLocation(Player player, CuboidArea area) {
+    private static List<SafeColumn> getSafeColumns(ChunkSnapshot snapshot, World world,
+            NearestOutsideChunkIterator chunks, ChunkCandidate chunkCandidate, double maximumDistanceSquared) {
+        List<SafeColumn> candidates = new ArrayList<>();
+        BlockBounds bounds = chunks.getBounds();
 
-        int maxIt = 15;
+        int minX = Math.max(bounds.minX, chunkCandidate.getChunkX() * 16);
+        int maxX = Math.min(bounds.maxX, chunkCandidate.getChunkX() * 16 + 15);
+        int minZ = Math.max(bounds.minZ, chunkCandidate.getChunkZ() * 16);
+        int maxZ = Math.min(bounds.maxZ, chunkCandidate.getChunkZ() * 16 + 15);
 
-        Location loc = new Location(area.getWorld(), 0, 0, 0);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                if (!chunks.isOutsideArea(x, z))
+                    continue;
 
-        boolean admin = ResPerm.admin_tp.hasPermission(player);
+                double distanceSquared = chunks.distanceSquared(x, z);
+                if (distanceSquared >= maximumDistanceSquared)
+                    continue;
 
-        boolean found = false;
-        int it = 0;
+                Location safeLocation = getSpawnLikeLocation(snapshot, world, x, z);
+                if (safeLocation != null)
+                    candidates.add(new SafeColumn(safeLocation, distanceSquared));
+            }
+        }
 
-        while (!found && it < maxIt) {
+        candidates.sort(Comparator
+                .comparingDouble((SafeColumn candidate) -> candidate.distanceSquared)
+                .thenComparingInt(candidate -> candidate.location.getBlockX())
+                .thenComparingInt(candidate -> candidate.location.getBlockZ()));
+        return candidates;
+    }
 
-            it++;
+    private static Location getSpawnLikeLocation(ChunkSnapshot snapshot, World world, int blockX, int blockZ) {
+        int localX = blockX & 0xF;
+        int localZ = blockZ & 0xF;
+        int minimumY = CMIWorld.getMinHeight(world);
+        int maximumY = world.getMaxHeight();
+        int highestY = Math.min(snapshot.getHighestBlockYAt(localX, localZ), maximumY - 1);
 
-            RandomLoc place = getRandomEdge(area, it);
+        for (int supportY = highestY; supportY >= minimumY; supportY--) {
+            Material supportMaterial = snapshot.getBlockType(localX, supportY, localZ);
+            BlockData supportData = snapshot.getBlockData(localX, supportY, localZ);
 
-            double x = place.getX();
-            double z = place.getZ();
-
-            loc.setX(x);
-            loc.setZ(z);
-            loc.setY(area.getHighVector().getBlockY());
-
-            int max = area.getHighVector().getBlockY();
-            max = loc.getWorld().getEnvironment() == Environment.NETHER ? 100 : max;
-
-            CompletableFuture<CMIChunkSnapShot> cs = getSnapshot(loc, true, false);
-
-            CMIChunkSnapShot chunk = cs.join();
-
-            if (chunk.getSnapshot() == null)
+            // Vanilla's overworld spawn lookup abandons a column when it meets fluid.
+            if (isLiquid(supportMaterial, supportData))
+                return null;
+            if (!isSafeSupport(supportMaterial, supportData))
                 continue;
 
-            for (int i = max; i > area.getLowVector().getY(); i--) {
-                loc.setY(i);
-                try {
-                    if (isValidLocation(chunk, loc)) {
-                        break;
-                    }
-                    if (!isEmptyBlock(chunk, loc)) {
-                        loc.setY(area.getLowVector().getY());
-                        break;
-                    }
-                } catch (Throwable e) {
-                    e.printStackTrace();
+            int feetY = supportY + 1;
+            if (feetY + 1 >= maximumY)
+                continue;
+            return new Location(world, blockX + 0.5D, feetY, blockZ + 0.5D);
+        }
+        return null;
+    }
+
+    private static boolean isSafeSupport(Material material, BlockData data) {
+        if (isDamaging(material) || isLiquid(material, data))
+            return false;
+        return data.isFaceSturdy(BlockFace.UP, BlockSupport.FULL);
+    }
+
+    private static boolean isLiquid(Material material, BlockData data) {
+        return (CMIMaterial.isWater(material) || CMIMaterial.isLava(material)) ||
+                data instanceof Waterlogged && ((Waterlogged) data).isWaterlogged();
+    }
+
+    private static boolean isDamaging(Material material) {
+        return CMIMaterial.get(material).containsCriteria(CMIMC.DAMAGECAUSING);
+    }
+
+    private static SafeColumn getFirstAllowedColumn(Player player, List<SafeColumn> candidates) {
+        if (candidates.isEmpty())
+            return null;
+
+        SafeColumn[] allowed = new SafeColumn[1];
+        CMIScheduler.runAtLocation(Residence.getInstance(), candidates.get(0).location, () -> {
+            boolean residenceAdmin = player != null && ResAdmin.isResAdmin(player);
+            boolean bypassTp = player != null && ResPerm.bypass_tp.hasPermission(player);
+            boolean adminTp = player != null && ResPerm.admin_tp.hasPermission(player);
+            boolean adminMove = player != null && ResPerm.admin_move.hasPermission(player);
+
+            for (SafeColumn candidate : candidates) {
+                if (!isSafeLiveLocation(candidate.location))
+                    continue;
+
+                ClaimedResidence target = Residence.getInstance().getResidenceManager().getByLoc(candidate.location);
+                if (canUseAsOutsideDestination(player, target, residenceAdmin, bypassTp, adminTp, adminMove)) {
+                    allowed[0] = candidate;
+                    return;
                 }
             }
+        }).join();
+        return allowed[0];
+    }
 
-            if (loc.getY() - 1 <= area.getLowVector().getY())
-                continue;
+    static boolean canUseAsOutsideDestination(Player player, ClaimedResidence target,
+            boolean residenceAdmin, boolean bypassTp, boolean adminTp, boolean adminMove) {
+        if (target == null)
+            return true;
+        if (player == null)
+            return false;
+        if (residenceAdmin || bypassTp || target.isOwner(player))
+            return true;
 
-            LocationCheck permissionCheck = new LocationCheck();
+        boolean teleportDenied = target.getPermissions().playerHas(player, Flags.tp, FlagCombo.OnlyFalse);
+        boolean movementDenied = target.getPermissions().playerHas(player, Flags.move, FlagCombo.OnlyFalse);
+        return (!teleportDenied || adminTp) && (!movementDenied || adminMove);
+    }
 
-            CMIScheduler.runTask(Residence.getInstance(), () -> {
-                ClaimedResidence tres = Residence.getInstance().getResidenceManager().getByLoc(loc);
-                if (tres != null && player != null && (!tres.getPermissions().playerHas(player, Flags.tp, FlagCombo.TrueOrNone) ||
-                        !tres.getPermissions().playerHas(player, Flags.move, FlagCombo.TrueOrNone)) && !admin) {
-                    permissionCheck.setPermissionPass(false);
-                }
-            }).join();
+    private static boolean isSafeLiveLocation(Location location) {
+        World world = location.getWorld();
+        if (world == null)
+            return false;
+        if (!world.getWorldBorder().isInside(location))
+            return false;
 
-            if (!permissionCheck.isPermissionPass())
-                continue;
+        int blockX = location.getBlockX();
+        int feetY = location.getBlockY();
+        int blockZ = location.getBlockZ();
 
-            found = true;
-            loc.add(0.5, 0.1, 0.5);
+        Block support = world.getBlockAt(blockX, feetY - 1, blockZ);
+        BlockData supportData = support.getBlockData();
+        if (!isSafeSupport(support.getType(), supportData))
+            return false;
 
-            break;
+        for (int y = feetY; y <= feetY + 1; y++) {
+            Block block = world.getBlockAt(blockX, y, blockZ);
+            BlockData data = block.getBlockData();
+            if (isLiquid(block.getType(), data) || isDamaging(block.getType()))
+                return false;
+
+            BoundingBox localPlayerBox = new BoundingBox(
+                    0.2D, feetY - y, 0.2D,
+                    0.8D, feetY + 1.8D - y, 0.8D);
+            if (block.getCollisionShape().overlaps(localPlayerBox))
+                return false;
         }
-        return found ? loc : null;
+        return true;
+    }
+
+    private static BlockBounds getWorldBorderBounds(WorldBorder border) {
+        double halfSize = border.getSize() / 2D;
+        double absoluteHalfSize = border.getMaxSize() / 2D;
+        double minimumX = Math.max(border.getCenter().getX() - halfSize, -absoluteHalfSize);
+        double maximumX = Math.min(border.getCenter().getX() + halfSize, absoluteHalfSize);
+        double minimumZ = Math.max(border.getCenter().getZ() - halfSize, -absoluteHalfSize);
+        double maximumZ = Math.min(border.getCenter().getZ() + halfSize, absoluteHalfSize);
+
+        return new BlockBounds(
+                (int) Math.ceil(minimumX - 0.5D),
+                (int) Math.ceil(maximumX - 0.5D) - 1,
+                (int) Math.ceil(minimumZ - 0.5D),
+                (int) Math.ceil(maximumZ - 0.5D) - 1);
+    }
+
+    private static final class SafeColumn {
+        private final Location location;
+        private final double distanceSquared;
+
+        private SafeColumn(Location location, double distanceSquared) {
+            this.location = location;
+            this.distanceSquared = distanceSquared;
+        }
     }
 
     private static Location fallBackLocation(ClaimedResidence res, Player player, boolean toSpawnOnFail) {
@@ -246,7 +366,7 @@ public class LocationUtil {
         if (area == null)
             return fallBackLocation(res, player, toSpawnOnFail);
 
-        Location loc = getEdgeLocation(player, area);
+        Location loc = getNearestOutsideLocation(player, insideLoc, area);
 
         if (loc == null)
             return fallBackLocation(res, player, toSpawnOnFail);

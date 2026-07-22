@@ -112,8 +112,7 @@ import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ResidencePlayerListener implements Listener {
 
-    private static final double MAX_SLIME_BOUNCE_DISTANCE = 52.5787915638948D;
-    private static final double MAX_SLIME_BOUNCE_VELOCITY = 3.55794529641779D;
+    private static final double MAX_BOUNCE_VELOCITY = 3.55794529641779D;
 
     private Residence plugin;
 
@@ -2394,12 +2393,12 @@ public class ResidencePlayerListener implements Listener {
         if (res.getAreaByLoc(from) != null)
             return false;
 
-        Vector velocity = to.toVector().subtract(from.toVector());
-        if (velocity.lengthSquared() < 1e-12)
+        Vector movement = to.toVector().subtract(from.toVector());
+        if (movement.lengthSquared() < 1e-12)
             return false;
 
         double[] pos = { from.getX(), from.getY(), from.getZ() };
-        double[] dir = { velocity.getX(), velocity.getY(), velocity.getZ() };
+        double[] dir = { movement.getX(), movement.getY(), movement.getZ() };
 
         double bestEntry = Double.MAX_VALUE;
         int bestAxis = -1;
@@ -2449,6 +2448,10 @@ public class ResidencePlayerListener implements Listener {
         if (bestAxis == -1)
             return false;
 
+        Vector velocity = player.getVelocity().clone();
+        if (velocity.lengthSquared() < 1e-12)
+            velocity = movement.clone();
+
         switch (bestAxis) {
         case 0:
             velocity.setX(-velocity.getX());
@@ -2461,11 +2464,10 @@ public class ResidencePlayerListener implements Listener {
             break;
         }
 
-        // Vanilla slime blocks bounce living entities at 1.0x vertical speed.
-        // The hard cap mirrors the maximum vanilla slime rebound from world top to bottom
-        // (382 blocks, excluding the bottom bedrock layer): ~52.5787915638948 blocks.
-        if (velocity.length() > MAX_SLIME_BOUNCE_VELOCITY)
-            velocity.normalize().multiply(MAX_SLIME_BOUNCE_VELOCITY);
+        // Mirror reflection preserves the speed unless it exceeds the hard cap.
+        if (velocity.length() > MAX_BOUNCE_VELOCITY)
+            velocity.normalize().multiply(MAX_BOUNCE_VELOCITY);
+        final Vector reflectedVelocity = velocity;
 
         // Bouncing off the top face replaces the landing which would have reset fall distance
         final boolean resetFall = bestAxis == 1 && dir[1] < 0;
@@ -2476,7 +2478,7 @@ public class ResidencePlayerListener implements Listener {
                 return;
             if (resetFall)
                 player.setFallDistance(0F);
-            player.setVelocity(velocity);
+            player.setVelocity(reflectedVelocity);
         }, 1L);
 
         return true;
@@ -2568,13 +2570,26 @@ public class ResidencePlayerListener implements Listener {
 
             Location lastLoc = tempData.getLastValidLocation(player);
 
-            if (lastLoc == null)
-                lastLoc = player.getLocation();
+            if (lastLoc == null) {
+                bounceAnimation(player, res);
+                res.kickFromResidence(player);
+                player.closeInventory();
+                informOnMoveDeny(player, res);
+                return false;
+            }
 
             bounceAnimation(player, res);
             ClaimedResidence preRes = plugin.getResidenceManager().getByLoc(lastLoc);
 
-            if (preRes != null && preRes.getPermissions().playerHas(player, Flags.tp, FlagCombo.OnlyFalse) && !ResPerm.admin_tp.hasPermission(player, 10000L)) {
+            boolean cannotTeleportToLast = preRes != null && Flags.tp.isGlobalyEnabled() &&
+                    preRes.getPermissions().playerHas(player, Flags.tp, FlagCombo.OnlyFalse) &&
+                    !ResPerm.admin_tp.hasPermission(player, 10000L);
+            boolean cannotMoveToLast = preRes != null && Flags.move.isGlobalyEnabled() &&
+                    preRes.getPermissions().playerHas(player, Flags.move, FlagCombo.OnlyFalse) &&
+                    !ResAdmin.isResAdmin(player) && !preRes.isOwner(player) &&
+                    !ResPerm.admin_move.hasPermission(player, 10000L);
+
+            if (cannotTeleportToLast || cannotMoveToLast) {
                 res.kickFromResidence(player);
                 player.closeInventory();
                 informOnMoveDeny(player, res);
