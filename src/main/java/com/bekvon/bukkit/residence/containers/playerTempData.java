@@ -67,11 +67,6 @@ public class playerTempData {
         return stuckTeleportCounter;
     }
 
-    public void resetStuckTeleportCounter() {
-        if (stuckTeleportCounter != null)
-            stuckTeleportCounter.reset();
-    }
-
     public long getLastCheck() {
         return lastCheck;
     }

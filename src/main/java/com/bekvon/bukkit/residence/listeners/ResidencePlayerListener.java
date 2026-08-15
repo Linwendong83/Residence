@@ -112,9 +112,7 @@ import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ResidencePlayerListener implements Listener {
 
-    static final double MAX_BOUNCE_VELOCITY = 3.55794529641779D;
-    private static final int STUCK_DENIAL_THRESHOLD = 3;
-    private static final long STUCK_DENIAL_RESET_MILLIS = 10_000L;
+    private static final double MAX_BOUNCE_VELOCITY = 3.55794529641779D;
 
     private Residence plugin;
 
@@ -2454,7 +2452,22 @@ public class ResidencePlayerListener implements Listener {
         if (velocity.lengthSquared() < 1e-12)
             velocity = movement.clone();
 
-        final Vector bounceVelocity = calculateBounceVelocity(velocity, bestAxis);
+        Vector outwardNormal = new Vector();
+        double outwardSign = dir[bestAxis] > 0D ? -1D : 1D;
+        switch (bestAxis) {
+        case 0:
+            outwardNormal.setX(outwardSign);
+            break;
+        case 1:
+            outwardNormal.setY(outwardSign);
+            break;
+        default:
+            outwardNormal.setZ(outwardSign);
+            break;
+        }
+
+        final Vector bounceVelocity = calculateBounceVelocity(velocity, outwardNormal,
+                plugin.getConfigManager().getMinBounceVelocity());
 
         // Bouncing off the top face replaces the landing which would have reset fall distance
         final boolean resetFall = bestAxis == 1 && dir[1] < 0;
@@ -2472,35 +2485,44 @@ public class ResidencePlayerListener implements Listener {
     }
 
     /**
-     * Calculates a mirror reflection on one of the residence faces.
+     * Calculates a bounce velocity which points out of the residence while
+     * preserving as much tangential movement as the hard speed cap allows.
      *
      * @param velocity the velocity before the bounce
-     * @param reflectionAxis the face axis (0 = X, 1 = Y, 2 = Z)
+     * @param outwardNormal the unit direction pointing out of the residence
+     * @param minimumVelocity the minimum outward normal component
      * @return the velocity to apply after the bounce
      */
-    static Vector calculateBounceVelocity(Vector velocity, int reflectionAxis) {
+    static Vector calculateBounceVelocity(Vector velocity, Vector outwardNormal, double minimumVelocity) {
         if (velocity == null)
             velocity = new Vector();
+        if (outwardNormal == null || outwardNormal.lengthSquared() < 1e-12)
+            return velocity.clone();
 
-        Vector reflected = velocity.clone();
-        switch (reflectionAxis) {
-        case 0:
-            reflected.setX(-reflected.getX());
-            break;
-        case 1:
-            reflected.setY(-reflected.getY());
-            break;
-        case 2:
-            reflected.setZ(-reflected.getZ());
-            break;
-        default:
-            return reflected;
+        Vector normal = outwardNormal.clone().normalize();
+        double minimum = minimumVelocity;
+        if (Double.isNaN(minimum) || Double.isInfinite(minimum))
+            minimum = 0.35D;
+        minimum = Math.max(0D, Math.min(MAX_BOUNCE_VELOCITY, minimum));
+
+        Vector source = velocity.clone();
+        double sourceNormalComponent = source.dot(normal);
+        Vector tangent = source.clone().subtract(normal.clone().multiply(sourceNormalComponent));
+
+        // Reflect the normal component first, then enforce the configured minimum.
+        double normalComponent = -sourceNormalComponent;
+        normalComponent = Math.max(minimum, normalComponent);
+        normalComponent = Math.min(MAX_BOUNCE_VELOCITY, normalComponent);
+
+        double tangentLimitSquared = MAX_BOUNCE_VELOCITY * MAX_BOUNCE_VELOCITY
+                - normalComponent * normalComponent;
+        if (tangentLimitSquared <= 0D) {
+            tangent.zero();
+        } else if (tangent.lengthSquared() > tangentLimitSquared) {
+            tangent.normalize().multiply(Math.sqrt(tangentLimitSquared));
         }
 
-        if (reflected.length() > MAX_BOUNCE_VELOCITY)
-            reflected.normalize().multiply(MAX_BOUNCE_VELOCITY);
-
-        return reflected;
+        return normal.multiply(normalComponent).add(tangent);
     }
 
     private void informOnMoveDeny(Player player, ClaimedResidence res) {
@@ -2562,10 +2584,8 @@ public class ResidencePlayerListener implements Listener {
                 !res.isOwner(player) &&
                 !ResPerm.admin_move.hasPermission(player, 10000L);
 
-        if (!cantMove) {
+        if (!cantMove)
             tempData.setCurrentResidence(player, res);
-            tempData.resetStuckTeleportCounter();
-        }
 
         boolean teleported = false;
         if (!cantMove && Flags.nofly.isGlobalyEnabled() && player.isFlying() && res.getPermissions().playerHas(player, Flags.nofly, FlagCombo.OnlyTrue) && !ResAdmin.isResAdmin(player)
@@ -2579,17 +2599,10 @@ public class ResidencePlayerListener implements Listener {
             if (res.getRaid().isUnderRaid() && (res.getRaid().isAttacker(player.getUniqueId()) || res.getRaid().isDefender(player.getUniqueId())))
                 return true;
 
-            StuckInfo info = updateStuckState(player, res);
+            StuckInfo info = updateStuckTeleport(player, loc);
 
-            if (info.getTimesDenied() >= STUCK_DENIAL_THRESHOLD) {
-                bounceAnimation(player, res);
-                if (player.getVehicle() != null)
-                    player.leaveVehicle();
-                res.kickFromResidence(player, loc);
-                return false;
-            }
-
-            if (tryBounce(player, res, from, loc)) {
+            // Rapid deny loops (velocity blocked or ignored) fall back to the teleport below
+            if ((info == null || info.getTimesTeleported() <= 12) && tryBounce(player, res, from, loc)) {
                 bounceAnimation(player, res);
                 String resName = res.getName();
                 CMIScheduler.runTaskAsynchronously(plugin, () -> lm.Residence_MoveDeny.sendMessage(player, resName));
@@ -2600,7 +2613,7 @@ public class ResidencePlayerListener implements Listener {
 
             if (lastLoc == null) {
                 bounceAnimation(player, res);
-                res.kickFromResidence(player, loc);
+                res.kickFromResidence(player);
                 player.closeInventory();
                 informOnMoveDeny(player, res);
                 return false;
@@ -2618,7 +2631,7 @@ public class ResidencePlayerListener implements Listener {
                     !ResPerm.admin_move.hasPermission(player, 10000L);
 
             if (cannotTeleportToLast || cannotMoveToLast) {
-                res.kickFromResidence(player, loc);
+                res.kickFromResidence(player);
                 player.closeInventory();
                 informOnMoveDeny(player, res);
                 return false;
@@ -2629,10 +2642,18 @@ public class ResidencePlayerListener implements Listener {
             if (player.getVehicle() != null)
                 player.leaveVehicle();
 
+            if (info != null && info.getTimesTeleported() > 12) {
+                Teleporting.teleport(player, lastLoc).thenAccept(success -> {
+                    if (!success)
+                        res.kickFromResidence(player);
+                });
+                return false;
+            }
+
             if (!teleported) {
                 Teleporting.teleport(player, lastLoc).thenAccept(success -> {
                     if (!success)
-                        res.kickFromResidence(player, loc);
+                        res.kickFromResidence(player);
                 });
             }
 
@@ -2732,9 +2753,13 @@ public class ResidencePlayerListener implements Listener {
         }
     }
 
-    private StuckInfo updateStuckState(Player player, ClaimedResidence res) {
+    private StuckInfo updateStuckTeleport(Player player, Location loc) {
+
+        if (loc.getY() >= player.getLocation().getY())
+            return null;
+
         StuckInfo info = playerTempData.get(player.getUniqueId()).getStuckTeleportCounter();
-        info.registerDeniedMove(res.getName(), System.currentTimeMillis(), STUCK_DENIAL_RESET_MILLIS);
+        info.updateLastTp();
 
         return info;
     }

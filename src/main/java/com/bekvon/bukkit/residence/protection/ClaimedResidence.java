@@ -2069,11 +2069,6 @@ public class ClaimedResidence {
 
     public boolean kickFromResidence(Player player) {
 
-        return kickFromResidence(player, player.getLocation());
-    }
-
-    public boolean kickFromResidence(Player player, Location searchOrigin) {
-
         // We might be kicking player who is near residence but not inside of it
         // if (!this.containsLoc(player.getLocation()))
         // return false;
@@ -2087,8 +2082,7 @@ public class ClaimedResidence {
             if (!pendingOutsideTeleports.add(playerId))
                 return true;
 
-            Location origin = searchOrigin == null ? player.getLocation() : searchOrigin.clone();
-            CompletableFuture<Location> future = LocationUtil.getOutsideFreeLocASYNC(this, origin, player, true);
+            CompletableFuture<Location> future = LocationUtil.getOutsideFreeLocASYNC(this, player, true);
 
             future.whenComplete((loc1, error) -> {
                 if (error != null || loc1 == null) {
