@@ -112,7 +112,7 @@ import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 
 public class ResidencePlayerListener implements Listener {
 
-    private static final double MAX_BOUNCE_VELOCITY = 3.55794529641779D;
+    static final double MAX_BOUNCE_VELOCITY = 3.55794529641779D;
 
     private Residence plugin;
 
@@ -2452,22 +2452,22 @@ public class ResidencePlayerListener implements Listener {
         if (velocity.lengthSquared() < 1e-12)
             velocity = movement.clone();
 
+        Vector outwardNormal = new Vector();
+        double outwardSign = dir[bestAxis] > 0D ? -1D : 1D;
         switch (bestAxis) {
         case 0:
-            velocity.setX(-velocity.getX());
+            outwardNormal.setX(outwardSign);
             break;
         case 1:
-            velocity.setY(-velocity.getY());
+            outwardNormal.setY(outwardSign);
             break;
         default:
-            velocity.setZ(-velocity.getZ());
+            outwardNormal.setZ(outwardSign);
             break;
         }
 
-        // Mirror reflection preserves the speed unless it exceeds the hard cap.
-        if (velocity.length() > MAX_BOUNCE_VELOCITY)
-            velocity.normalize().multiply(MAX_BOUNCE_VELOCITY);
-        final Vector reflectedVelocity = velocity;
+        final Vector bounceVelocity = calculateBounceVelocity(velocity, outwardNormal,
+                plugin.getConfigManager().getMinBounceVelocity());
 
         // Bouncing off the top face replaces the landing which would have reset fall distance
         final boolean resetFall = bestAxis == 1 && dir[1] < 0;
@@ -2478,10 +2478,50 @@ public class ResidencePlayerListener implements Listener {
                 return;
             if (resetFall)
                 player.setFallDistance(0F);
-            player.setVelocity(reflectedVelocity);
+            player.setVelocity(bounceVelocity);
         }, 1L);
 
         return true;
+    }
+
+    /**
+     * Calculates a bounce velocity which points out of the residence while
+     * preserving as much tangential movement as the hard speed cap allows.
+     *
+     * @param velocity the velocity before the bounce
+     * @param outwardNormal the unit direction pointing out of the residence
+     * @param minimumVelocity the minimum outward normal component
+     * @return the velocity to apply after the bounce
+     */
+    static Vector calculateBounceVelocity(Vector velocity, Vector outwardNormal, double minimumVelocity) {
+        if (velocity == null)
+            velocity = new Vector();
+        if (outwardNormal == null || outwardNormal.lengthSquared() < 1e-12)
+            return velocity.clone();
+
+        Vector normal = outwardNormal.clone().normalize();
+        double minimum = minimumVelocity;
+        if (Double.isNaN(minimum) || Double.isInfinite(minimum))
+            minimum = 0D;
+        minimum = Math.max(0D, Math.min(MAX_BOUNCE_VELOCITY, minimum));
+
+        Vector source = velocity.clone();
+        double normalComponent = source.dot(normal);
+        Vector tangent = source.clone().subtract(normal.clone().multiply(normalComponent));
+
+        // Never leave an inward normal component after a denied move.
+        normalComponent = Math.max(minimum, normalComponent);
+        normalComponent = Math.min(MAX_BOUNCE_VELOCITY, normalComponent);
+
+        double tangentLimitSquared = MAX_BOUNCE_VELOCITY * MAX_BOUNCE_VELOCITY
+                - normalComponent * normalComponent;
+        if (tangentLimitSquared <= 0D) {
+            tangent.zero();
+        } else if (tangent.lengthSquared() > tangentLimitSquared) {
+            tangent.normalize().multiply(Math.sqrt(tangentLimitSquared));
+        }
+
+        return normal.multiply(normalComponent).add(tangent);
     }
 
     private void informOnMoveDeny(Player player, ClaimedResidence res) {

@@ -155,6 +155,7 @@ public class ConfigManager {
     protected boolean ActionBarOnSelection;
     protected boolean visualizer;
     protected int minMoveUpdate;
+    protected double minBounceVelocity;
 
     protected int VoteRangeFrom;
     protected int HealInterval;
@@ -816,6 +817,13 @@ public class ConfigManager {
         c.addComment("Global.MoveCheckInterval", "The interval, in milliseconds, between movement checks.", "Reducing this will increase the load on the server.",
                 "Increasing this will allow players to move further in movement restricted zones before they are teleported out.");
         minMoveUpdate = c.get("Global.MoveCheckInterval", 500);
+
+        c.addComment("Global.Bounce.MinVelocity", "Minimum outward velocity applied when bouncing off a residence with move disabled.",
+                "The value is measured in blocks per tick. Set to 0 to disable the minimum.");
+        minBounceVelocity = c.get("Global.Bounce.MinVelocity", 0.35D);
+        if (Double.isNaN(minBounceVelocity) || Double.isInfinite(minBounceVelocity))
+            minBounceVelocity = 0.35D;
+        minBounceVelocity = Math.max(0D, Math.min(3.55794529641779D, minBounceVelocity));
 
         c.addComment("Global.Tp.TeleportDelay", "The interval, in seconds, for teleportation.", "Use 0 to disable");
         TeleportDelay = c.get("Global.Tp.TeleportDelay", 3);
@@ -1814,6 +1822,10 @@ public class ConfigManager {
 
     public int getMinMoveUpdateInterval() {
         return minMoveUpdate;
+    }
+
+    public double getMinBounceVelocity() {
+        return minBounceVelocity;
     }
 
     public int getVoteRangeFrom() {
