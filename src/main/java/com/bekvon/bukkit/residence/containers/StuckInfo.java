@@ -3,31 +3,35 @@ package com.bekvon.bukkit.residence.containers;
 public class StuckInfo {
 
     private int times = 0;
-    private long lastTp = 0L;
+    private long lastDeniedMove = 0L;
+    private String residenceName;
 
     public StuckInfo() {
-        times++;
-        lastTp = System.currentTimeMillis();
     }
 
-    public int getTimesTeleported() {
+    public int getTimesDenied() {
         return times;
     }
 
-    public void addTimeTeleported() {
-        this.times++;
+    public int registerDeniedMove(String residenceName, long deniedAt, long resetAfter) {
+        boolean sameResidence = this.residenceName == null
+                ? residenceName == null
+                : this.residenceName.equals(residenceName);
+        long elapsed = deniedAt - lastDeniedMove;
+
+        if (!sameResidence || elapsed < 0L || elapsed > resetAfter)
+            times = 0;
+
+        times++;
+        this.residenceName = residenceName;
+        lastDeniedMove = deniedAt;
+        return times;
     }
 
-    public long getLastTp() {
-        return lastTp;
-    }
-
-    public void updateLastTp() {
-        if (System.currentTimeMillis() - this.lastTp > 1000) {
-            this.times = 0;
-        }
-        addTimeTeleported();
-        this.lastTp = System.currentTimeMillis();
+    public void reset() {
+        times = 0;
+        lastDeniedMove = 0L;
+        residenceName = null;
     }
 
 }
