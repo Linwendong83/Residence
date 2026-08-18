@@ -7,7 +7,7 @@ api-version: 1.13
 folia-supported: true
 authors: [Zrips,bekvon]
 depend: [CMILib]
-softdepend: [Pl3xMap,BlueMap,Vault,Essentials,RealPlugin,iConomy,bPermissions,WorldEdit,WorldGuard,CrackShot,Multiverse-Core,MultiWorld,My_Worlds,TheWorld,dynmap,LWC,Kingdoms,PlaceholderAPI,CMI,ServerControlReloaded,Slimefun,CS-CoreLib]
+softdepend: [Pl3xMap,squaremap,BlueMap,Vault,Essentials,RealPlugin,iConomy,bPermissions,WorldEdit,WorldGuard,CrackShot,Multiverse-Core,MultiWorld,My_Worlds,TheWorld,dynmap,LWC,Kingdoms,PlaceholderAPI,CMI,ServerControlReloaded,Slimefun,CS-CoreLib]
 contributors: [lemon42,smbarbour,inorixu,Shayana_fr,Zrips]
 commands:
   res:
@@ -211,6 +211,9 @@ permissions:
     description: Allows for auto residence creation on chest place
     default: true
   residence.command.mirror:
+    description: Allows to access particular command
+    default: true
+  residence.command.pmirror:
     description: Allows to access particular command
     default: true
   residence.command.padd:
