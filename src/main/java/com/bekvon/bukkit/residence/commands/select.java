@@ -21,6 +21,7 @@ import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
 
 import net.Zrips.CMILib.FileHandler.ConfigReader;
+import net.Zrips.CMILib.Logs.CMIDebug;
 
 public class select implements cmd {
 
@@ -172,13 +173,20 @@ public class select implements cmd {
             }
             resName = res.getName();
             CuboidArea area = null;
+
             if (args.length > 2) {
                 area = res.getArea(args[2]);
                 areaName = args[2];
             } else {
-                areaName = res.getAreaIDbyLoc(player.getLocation());
+                areaName = res.getAreaNameByLoc(player.getLocation());
                 area = res.getArea(areaName);
             }
+
+            if (area == null) {
+                area = res.getMainArea();
+                areaName = res.getMainAreaName();
+            }
+
             if (area != null) {
                 plugin.getSelectionManager().placeLoc1(player, area.getHighLocation(), false);
                 plugin.getSelectionManager().placeLoc2(player, area.getLowLocation(), true);
