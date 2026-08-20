@@ -62,6 +62,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.potion.PotionEffect;
+import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 
 import com.bekvon.bukkit.residence.ConfigManager;
