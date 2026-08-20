@@ -1,11 +1,11 @@
 package com.bekvon.bukkit.residence.selectionVisuals;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -31,7 +31,7 @@ public class CuboidDisplayManager implements Listener {
     private static double RECALCULATE_DISTANCE = VisualizerConfig.getUpdateRateByTravel();
     private static double RECALCULATE_DISTANCE_SQUARED = RECALCULATE_DISTANCE * RECALCULATE_DISTANCE;
 
-    private static final Map<UUID, PlayerData> players = new HashMap<>();
+    private static final Map<UUID, PlayerData> players = new ConcurrentHashMap<>();
 
     public static void register() {
 

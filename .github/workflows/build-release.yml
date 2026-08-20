@@ -48,10 +48,28 @@ jobs:
           PY
           )"
 
+          UPSTREAM_VERSION="$(git show upstream/master:pom.xml | python3 -c '
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.fromstring(sys.stdin.read())
+          namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+          version = root.findtext("m:version", namespaces=namespace) or root.findtext("version")
+          if not version:
+              raise SystemExit("Unable to read upstream project version")
+          print(version.strip())
+          ')"
+
+          if [ "$VERSION" != "$UPSTREAM_VERSION" ]; then
+            echo "Local version $VERSION does not match upstream version $UPSTREAM_VERSION" >&2
+            exit 1
+          fi
+
           LATEST_VERSION_TAG="$(git tag --list '[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1 || true)"
-          UPSTREAM_VERSION_CHANGED=false
-          if [ -z "$LATEST_VERSION_TAG" ] || [ "$LATEST_VERSION_TAG" != "$VERSION" ]; then
-            UPSTREAM_VERSION_CHANGED=true
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          SHOULD_RELEASE=false
+          if ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            SHOULD_RELEASE=true
           fi
 
           mkdir -p .release
@@ -70,7 +88,7 @@ jobs:
             : > .release/local-commits.md
           fi
 
-          if [ "$UPSTREAM_VERSION_CHANGED" = true ] || [ "$HAS_LOCAL_COMMITS" = true ]; then
+          if [ "$SHOULD_RELEASE" = true ] || [ "$HAS_LOCAL_COMMITS" = true ]; then
             SHOULD_BUILD=true
           else
             SHOULD_BUILD=false
@@ -78,14 +96,15 @@ jobs:
 
           {
             echo "version=$VERSION"
+            echo "short_sha=$SHORT_SHA"
             echo "latest_version_tag=$LATEST_VERSION_TAG"
-            echo "upstream_version_changed=$UPSTREAM_VERSION_CHANGED"
+            echo "should_release=$SHOULD_RELEASE"
             echo "has_local_commits=$HAS_LOCAL_COMMITS"
             echo "should_build=$SHOULD_BUILD"
           } >> "$GITHUB_OUTPUT"
 
       - name: Fetch SpigotMC release notes
-        if: steps.decide.outputs.should_build == 'true' && steps.decide.outputs.upstream_version_changed == 'true'
+        if: steps.decide.outputs.should_release == 'true'
         env:
           VERSION: ${{ steps.decide.outputs.version }}
         shell: bash
@@ -149,13 +168,13 @@ jobs:
                   break
 
           if not note:
-              sys.exit(f"Unable to fetch SpigotMC update notes for version {VERSION}")
+              note = f"Upstream Residence {VERSION} release."
 
           Path(".release/upstream-notes.md").write_text(note + "\n", encoding="utf-8")
           PY
 
       - name: Compose release notes
-        if: steps.decide.outputs.should_build == 'true'
+        if: steps.decide.outputs.should_release == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -189,10 +208,18 @@ jobs:
       - name: Build
         if: steps.decide.outputs.should_build == 'true'
         shell: bash
-        run: mvn -B -DskipTests package
+        run: mvn -B package
+
+      - name: Upload build artifact
+        if: steps.decide.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Residence-${{ steps.decide.outputs.version }}-${{ steps.decide.outputs.short_sha }}
+          path: target/Residence${{ steps.decide.outputs.version }}.jar
+          if-no-files-found: error
 
       - name: Publish release
-        if: steps.decide.outputs.should_build == 'true'
+        if: steps.decide.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -209,15 +236,18 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "$VERSION" "$GITHUB_SHA"
-          git push --force origin "refs/tags/$VERSION"
-
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release edit "$VERSION" --title "$VERSION" --notes-file .release/release-notes.md
-            gh release upload "$VERSION" "$JAR" --clobber
-          else
-            gh release create "$VERSION" "$JAR" --title "$VERSION" --notes-file .release/release-notes.md
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Refusing to overwrite existing tag: $VERSION" >&2
+            exit 1
           fi
+          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Refusing to overwrite existing release: $VERSION" >&2
+            exit 1
+          fi
+
+          git tag "$VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/$VERSION"
+          gh release create "$VERSION" "$JAR" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md
 
       - name: Skip build
         if: steps.decide.outputs.should_build != 'true'

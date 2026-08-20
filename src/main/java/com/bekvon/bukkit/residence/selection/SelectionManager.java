@@ -535,7 +535,7 @@ public class SelectionManager {
         if (!VisualizerConfig.isShow())
             return;
 
-        CMIScheduler.runTask(Residence.getInstance(), () -> {
+        CMIScheduler.runAtEntity(Residence.getInstance(), player, () -> {
 
             // Only firing selection event if its selection and not one time showing. Check
             // can be removed on later builds and plugins can check if this is short

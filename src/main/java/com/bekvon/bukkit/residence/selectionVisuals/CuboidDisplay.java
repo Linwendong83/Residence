@@ -88,7 +88,7 @@ public class CuboidDisplay {
         if (scheduler != null)
             scheduler.cancel();
 
-        scheduler = CMIScheduler.runTaskLater(Residence.getInstance(), () -> {
+        scheduler = CMIScheduler.runAtEntityLater(Residence.getInstance(), player, () -> {
             clear();
             CuboidDisplayManager.remove(player, area);
             scheduler = null;
@@ -370,15 +370,13 @@ public class CuboidDisplay {
     }
 
     private void updateGridDisplays(CMIBlockDisplay display, double scaleX, double scaleY, double scaleZ, double locationX, double locationY, double locationZ) {
-        CMIScheduler.runAtEntity(Residence.getInstance(), display.getEntity(), () -> {
-            display.setVisual(
-                    locationX - getLineThickness() / 2.0,
-                    locationY - getLineThickness() / 2.0,
-                    locationZ - getLineThickness() / 2.0,
-                    (float) scaleX,
-                    (float) scaleY,
-                    (float) scaleZ);
-        });
+        display.setVisual(
+                locationX - getLineThickness() / 2.0,
+                locationY - getLineThickness() / 2.0,
+                locationZ - getLineThickness() / 2.0,
+                (float) scaleX,
+                (float) scaleY,
+                (float) scaleZ);
     }
 
     private void updateGridDisplays(List<CMIBlockDisplay> displays, List<GridLine> lines, double y) {
