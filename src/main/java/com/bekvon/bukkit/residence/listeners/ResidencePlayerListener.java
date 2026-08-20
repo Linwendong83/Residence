@@ -1375,7 +1375,7 @@ public class ResidencePlayerListener implements Listener {
         return isCanUseEntity_BothClick(mat) || isCanUseEntity_RClickOnly(mat);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)// Do not use (ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST) // Do not use (ignoreCancelled = true)
     public void onPlayerInteract(PlayerInteractEvent event) {
 
         Block block = event.getClickedBlock();
@@ -1392,7 +1392,7 @@ public class ResidencePlayerListener implements Listener {
         if (ResAdmin.isResAdmin(player))
             return;
 
-        if (event.useItemInHand() != Result.DENY ) {
+        if (event.useItemInHand() != Result.DENY) {
             CMIMaterial heldItem = CMIMaterial.get(event.getItem());
             // Check held Material Blacklist
             if (!heldItem.isNone() && heldItem.isValidItem() && !plugin.getItemManager().isAllowed(
@@ -2586,10 +2586,7 @@ public class ResidencePlayerListener implements Listener {
                 player.leaveVehicle();
 
             if (info != null && info.getTimesTeleported() > 12) {
-                Teleporting.teleport(player, lastLoc).thenAccept(success -> {
-                    if (!success)
-                        res.kickFromResidence(player);
-                });
+                res.kickFromResidence(player);
                 return false;
             }
 

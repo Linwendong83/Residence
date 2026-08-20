@@ -364,6 +364,9 @@ public class LocationUtil {
         CuboidArea area = res.getAreaByLoc(insideLoc);
 
         if (area == null)
+            area = res.getMainArea();
+
+        if (area == null)
             return fallBackLocation(res, player, toSpawnOnFail);
 
         Location loc = getNearestOutsideLocation(player, insideLoc, area);
