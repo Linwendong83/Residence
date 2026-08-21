@@ -67,18 +67,14 @@ jobs:
 
           LATEST_VERSION_TAG="$(git tag --list '[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1 || true)"
           SHORT_SHA="$(git rev-parse --short=12 HEAD)"
-          SHOULD_RELEASE=false
-          if ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            SHOULD_RELEASE=true
+          UPSTREAM_VERSION_CHANGED=false
+          if [ -z "$LATEST_VERSION_TAG" ] || [ "$LATEST_VERSION_TAG" != "$VERSION" ]; then
+            UPSTREAM_VERSION_CHANGED=true
           fi
 
           mkdir -p .release
 
-          if [ -n "$LATEST_VERSION_TAG" ]; then
-            LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' "$LATEST_VERSION_TAG..HEAD" --not upstream/master || true)"
-          else
-            LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' HEAD --not upstream/master || true)"
-          fi
+          LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' HEAD --not upstream/master || true)"
 
           if [ -n "$LOCAL_COMMITS" ]; then
             HAS_LOCAL_COMMITS=true
@@ -88,7 +84,7 @@ jobs:
             : > .release/local-commits.md
           fi
 
-          if [ "$SHOULD_RELEASE" = true ] || [ "$HAS_LOCAL_COMMITS" = true ]; then
+          if [ "$UPSTREAM_VERSION_CHANGED" = true ] || [ "$HAS_LOCAL_COMMITS" = true ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             SHOULD_BUILD=true
           else
             SHOULD_BUILD=false
@@ -98,13 +94,13 @@ jobs:
             echo "version=$VERSION"
             echo "short_sha=$SHORT_SHA"
             echo "latest_version_tag=$LATEST_VERSION_TAG"
-            echo "should_release=$SHOULD_RELEASE"
+            echo "upstream_version_changed=$UPSTREAM_VERSION_CHANGED"
             echo "has_local_commits=$HAS_LOCAL_COMMITS"
             echo "should_build=$SHOULD_BUILD"
           } >> "$GITHUB_OUTPUT"
 
       - name: Fetch SpigotMC release notes
-        if: steps.decide.outputs.should_release == 'true'
+        if: steps.decide.outputs.should_build == 'true'
         env:
           VERSION: ${{ steps.decide.outputs.version }}
         shell: bash
@@ -192,7 +188,7 @@ jobs:
           PY
 
       - name: Compose release notes
-        if: steps.decide.outputs.should_release == 'true'
+        if: steps.decide.outputs.should_build == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -237,7 +233,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release
-        if: steps.decide.outputs.should_release == 'true'
+        if: steps.decide.outputs.should_build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -254,18 +250,15 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "Refusing to overwrite existing tag: $VERSION" >&2
-            exit 1
-          fi
-          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
-            echo "Refusing to overwrite existing release: $VERSION" >&2
-            exit 1
-          fi
+          git tag -f "$VERSION" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$VERSION"
 
-          git tag "$VERSION" "$GITHUB_SHA"
-          git push origin "refs/tags/$VERSION"
-          gh release create "$VERSION" "$JAR" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md
+          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md
+            gh release upload "$VERSION" "$JAR" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$VERSION" "$JAR" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md
+          fi
 
       - name: Skip build
         if: steps.decide.outputs.should_build != 'true'
