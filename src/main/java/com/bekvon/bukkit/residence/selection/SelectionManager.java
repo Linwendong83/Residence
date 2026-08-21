@@ -28,6 +28,8 @@ import com.bekvon.bukkit.residence.permissions.PermissionGroup;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
+import com.bekvon.bukkit.residence.selectionVisuals.CuboidDisplayManager;
+import com.bekvon.bukkit.residence.selectionVisuals.CuboidDisplayType;
 
 import net.Zrips.CMILib.ActionBar.CMIActionBar;
 import net.Zrips.CMILib.Colors.CMIChatColor;
@@ -533,7 +535,7 @@ public class SelectionManager {
         if (!VisualizerConfig.isShow())
             return;
 
-        CMIScheduler.runAtEntity(Residence.getInstance(), player, () -> {
+        CMIScheduler.runTask(Residence.getInstance(), () -> {
 
             // Only firing selection event if its selection and not one time showing. Check
             // can be removed on later builds and plugins can check if this is short
@@ -545,6 +547,18 @@ public class SelectionManager {
                 if (ev.isCancelled()) {
                     return;
                 }
+            }
+
+            if (VisualizerConfig.isUseModernVersion()) {
+                if (v.isOnce()) {
+                    CuboidDisplayManager.add(player,
+                            v.getAreas().isEmpty() ? v.getErrorAreas() : v.getAreas(),
+                            v.getAreas().isEmpty() ? CuboidDisplayType.BOUNCE : CuboidDisplayType.ENTER_EXIT,
+                            1, 3, 1);
+                } else {
+                    CuboidDisplayManager.show(player, v.getAreas(), v.getErrorAreas());
+                }
+                return;
             }
 
             Visualizer tv = vMap.get(player.getUniqueId());
