@@ -111,6 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import base64
           import html
           import json
           import re
@@ -127,14 +128,31 @@ jobs:
               with urllib.request.urlopen(request, timeout=20) as response:
                   return json.loads(response.read().decode("utf-8"))
 
+          def decode_value(val):
+              if not val or not isinstance(val, str):
+                  return ""
+              try:
+                  decoded_bytes = base64.b64decode(val.strip(), validate=True)
+                  return decoded_bytes.decode("utf-8")
+              except Exception:
+                  return val
+
           def clean(value):
+              value = decode_value(value)
               value = html.unescape(value or "")
               value = re.sub(r"(?i)<br\s*/?>", "\n", value)
               value = re.sub(r"(?i)</p\s*>", "\n", value)
+              value = re.sub(r"(?i)</li>", "\n", value)
+              value = re.sub(r"(?i)<li\s*>", "- ", value)
+              value = re.sub(r"(?i)</div>", "\n", value)
               value = re.sub(r"<[^>]+>", "", value)
               value = re.sub(r"\[[^\]]+\]", "", value)
-              lines = [re.sub(r"[ \t]+", " ", line).strip() for line in value.splitlines()]
-              lines = [line for line in lines if line]
+              value = re.sub(r"[\u200b\u200c\u200d\ufeff\u200e\u200f]", "", value)
+              lines = []
+              for line in value.splitlines():
+                  line = re.sub(r"[ \t]+", " ", line).strip()
+                  if line:
+                      lines.append(line)
               return "\n".join(lines).strip()
 
           updates = load_json(f"{API}/resources/{RESOURCE_ID}/updates?size=1000&sort=-date")
@@ -143,23 +161,23 @@ jobs:
 
           matches = []
           for update in updates:
-              title = str(update.get("title") or update.get("name") or "")
-              description = str(update.get("description") or update.get("content") or "")
+              title = clean(str(update.get("title") or update.get("name") or ""))
+              description = clean(str(update.get("description") or update.get("content") or ""))
               if VERSION in title or VERSION in description:
-                  matches.append(update)
+                  matches.append((update, title, description))
 
           note = ""
-          for update in matches:
-              detail = update
+          for update, title, description in matches:
               update_id = update.get("id")
+              detail_body = ""
               if update_id is not None:
                   try:
                       detail = load_json(f"{API}/resources/{RESOURCE_ID}/updates/{update_id}")
+                      detail_body = clean(str(detail.get("description") or detail.get("content") or ""))
                   except Exception:
-                      detail = update
+                      detail_body = ""
 
-              title = clean(str(detail.get("title") or detail.get("name") or ""))
-              body = clean(str(detail.get("description") or detail.get("content") or ""))
+              body = detail_body or description
               if body:
                   note = body
               elif title:
