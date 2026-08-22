@@ -83,18 +83,30 @@ jobs:
             fi
           fi
 
+          UPSTREAM_COMMITS=""
           if [ -n "$PREV_TAG" ]; then
             LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' "${PREV_TAG}..HEAD" --not upstream/master || true)"
+            PREV_MB="$(git merge-base "$PREV_TAG" upstream/master 2>/dev/null || true)"
+            CURR_MB="$(git merge-base HEAD upstream/master 2>/dev/null || true)"
+            if [ -n "$PREV_MB" ] && [ -n "$CURR_MB" ] && [ "$PREV_MB" != "$CURR_MB" ]; then
+              UPSTREAM_COMMITS="$(git log --reverse --no-merges --format='- %h %s' "$PREV_MB..$CURR_MB" || true)"
+            fi
           else
             LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' HEAD --not upstream/master || true)"
           fi
 
           if [ -n "$LOCAL_COMMITS" ]; then
             HAS_LOCAL_COMMITS=true
-            printf '%s\n' "$LOCAL_COMMITS" > .release/local-commits.md
+            printf '### Fork Commits\n%s\n' "$LOCAL_COMMITS" > .release/local-commits.md
           else
             HAS_LOCAL_COMMITS=false
             : > .release/local-commits.md
+          fi
+
+          if [ -n "$UPSTREAM_COMMITS" ]; then
+            printf '### Upstream Commits\n%s\n' "$UPSTREAM_COMMITS" > .release/upstream-commits.md
+          else
+            : > .release/upstream-commits.md
           fi
 
           if [ "$UPSTREAM_VERSION_CHANGED" = true ] || [ "$HAS_LOCAL_COMMITS" = true ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -211,11 +223,17 @@ jobs:
             cat .release/upstream-notes.md >> .release/release-notes.md
           fi
 
-          if [ -s .release/upstream-notes.md ] && [ -s .release/local-commits.md ]; then
-            printf '\n' >> .release/release-notes.md
+          if [ -s .release/upstream-commits.md ]; then
+            if [ -s .release/release-notes.md ]; then
+              printf '\n\n' >> .release/release-notes.md
+            fi
+            cat .release/upstream-commits.md >> .release/release-notes.md
           fi
 
           if [ -s .release/local-commits.md ]; then
+            if [ -s .release/release-notes.md ]; then
+              printf '\n\n' >> .release/release-notes.md
+            fi
             cat .release/local-commits.md >> .release/release-notes.md
           fi
 
