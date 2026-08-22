@@ -74,7 +74,20 @@ jobs:
 
           mkdir -p .release
 
-          LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' HEAD --not upstream/master || true)"
+          PREV_TAG=""
+          if [ -n "$LATEST_VERSION_TAG" ]; then
+            if [ "$LATEST_VERSION_TAG" != "$VERSION" ]; then
+              PREV_TAG="$LATEST_VERSION_TAG"
+            else
+              PREV_TAG="$(git tag --list '[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v "^${VERSION}$" | head -n 1 || true)"
+            fi
+          fi
+
+          if [ -n "$PREV_TAG" ]; then
+            LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' "${PREV_TAG}..HEAD" --not upstream/master || true)"
+          else
+            LOCAL_COMMITS="$(git log --reverse --no-merges --format='- %h %s' HEAD --not upstream/master || true)"
+          fi
 
           if [ -n "$LOCAL_COMMITS" ]; then
             HAS_LOCAL_COMMITS=true
