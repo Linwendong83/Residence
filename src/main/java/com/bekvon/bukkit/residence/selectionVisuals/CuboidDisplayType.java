@@ -15,7 +15,7 @@ public enum CuboidDisplayType {
     ERROR(
             CMIMaterial.RED_WOOL,
             CMIMaterial.RED_WOOL,
-            30.0,
+            5.0,
             0.05,
             32,
             8
