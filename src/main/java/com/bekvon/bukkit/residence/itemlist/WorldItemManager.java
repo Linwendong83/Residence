@@ -8,6 +8,7 @@ import java.util.Set;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 
 import net.Zrips.CMILib.Items.CMIMaterial;
 import com.bekvon.bukkit.residence.Residence;
@@ -21,23 +22,16 @@ public class WorldItemManager {
         this.plugin = plugin;
     }
 
-    public boolean isAllowed(Material mat, PermissionGroup group, String world) {
-        if (mat == null)
+    public boolean isAllowed(Material mat, Player player) {
+        if (!CMIMaterial.isValidItem(mat)) {
             return true;
-        if (group == null)
+        }
+        PermissionGroup group = plugin.getPlayerManager().getResidencePlayer(player).getGroup();
+        if (group == null) {
             return true;
-        return isAllowed(mat, group.getGroupName(), world);
-    }
-
-    public boolean isAllowed(Material mat, String group, String world) {
-        if (mat == null)
-            return true;
-
-        if (!CMIMaterial.isValidItem(mat))
-            return true;
-
+        }
         for (WorldItemList list : lists) {
-            if (!list.isAllowed(mat, world, group)) {
+            if (!list.isAllowed(mat, player.getWorld().getName(), group.getGroupName())) {
                 return false;
             }
         }

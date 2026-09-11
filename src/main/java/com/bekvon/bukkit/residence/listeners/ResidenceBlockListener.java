@@ -12,12 +12,11 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
-import org.bukkit.block.data.Directional;
-import org.bukkit.block.data.type.Dispenser;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowman;
+import org.bukkit.entity.minecart.HopperMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -40,11 +39,13 @@ import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.world.PortalCreateEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.util.Vector;
@@ -124,11 +125,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlantGrow(BlockGrowEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.grow.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.grow, event.getBlock())) {
             return;
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
         if (!perms.has(Flags.grow, true)) {
             event.setCancelled(true);
@@ -137,16 +137,15 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onVineGrow(BlockSpreadEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.grow.isGlobalyEnabled())
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.grow, event.getBlock())) {
+            return;
+        }
         CMIMaterial type = CMIMaterial.get(event.getSource().getType());
 
         if (!type.equals(CMIMaterial.VINE) && !type.toString().contains("_VINES"))
             return;
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+
         FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
         if (!perms.has(Flags.grow, true)) {
             event.setCancelled(true);
@@ -155,11 +154,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onleaveDecay(LeavesDecayEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.decay.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.decay, event.getBlock())) {
             return;
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
         if (!perms.has(Flags.decay, true)) {
             event.setCancelled(true);
@@ -168,11 +166,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onTreeGrowt(StructureGrowEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.grow.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.grow, event.getWorld())) {
             return;
-        if (plugin.isDisabledWorldListener(event.getWorld()))
-            return;
+        }
         FlagPermissions perms = FlagPermissions.getPerms(event.getLocation());
         if (!perms.has(Flags.grow, true)) {
             event.setCancelled(true);
@@ -213,7 +210,7 @@ public class ResidenceBlockListener implements Listener {
             return true;
 
         // disabling event on world
-        if (Residence.getInstance().isDisabledWorldListener(loc.getWorld()))
+        if (Residence.getInstance().isDisabledWorldListener(loc))
             return true;
 
         if (ResAdmin.isResAdmin(player)) {
@@ -268,19 +265,43 @@ public class ResidenceBlockListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    public void onSnowGolemTrailForm(EntityBlockFormEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.snowtrail.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+    public void onEntityBlockForm(EntityBlockFormEvent event) {
 
-        if (event.getEntity() instanceof Snowman) {
+        Entity entity = event.getEntity();
+
+        if (plugin.isDisabledWorldListener(entity)) {
+            return;
+        }
+        if (Flags.build.isGlobalyEnabled() && entity instanceof Player) {
+            Player player = (Player) entity;
+            if (FlagPermissions.shouldDenyAndNotify(player, event.getBlock(), Flags.build, null)) {
+                event.setCancelled(true);
+            }
+
+        } else if (Flags.snowtrail.isGlobalyEnabled() && entity instanceof Snowman) {
             FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
             if (!perms.has(Flags.snowtrail, true)) {
                 event.setCancelled(true);
             }
+
+        } else if (Flags.animalgriefing.isGlobalyEnabled() && Utils.isAnimal(entity)) {
+            FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
+            if (!perms.has(Flags.animalgriefing, perms.has(Flags.build, true))) {
+                event.setCancelled(true);
+            }
+
+        } else if (Flags.mobgriefing.isGlobalyEnabled() && ResidenceEntityListener.isMonster(entity)) {
+            FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
+            if (!perms.has(Flags.mobgriefing, perms.has(Flags.build, true))) {
+                event.setCancelled(true);
+            }
+
+        } else if (Flags.build.isGlobalyEnabled()) {
+            FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
+            if (!perms.has(Flags.build, true)) {
+                event.setCancelled(true);
+            }
+
         }
     }
 
@@ -298,12 +319,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onIceForm(BlockFormEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.iceform.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.iceform, event.getBlock())) {
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         // SnowGolem already has SnowTrail Flag
         if (event instanceof EntityBlockFormEvent
                 && ((EntityBlockFormEvent) event).getEntity() instanceof Snowman) {
@@ -320,13 +339,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onIceMelt(BlockFadeEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.icemelt.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.icemelt, event.getBlock())) {
+            return;
+        }
         if (!isIceOrSnow(event.getBlock().getType())) {
             return;
         }
@@ -386,12 +402,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockFall(EntityChangeBlockEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.fallinprotection.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.fallinprotection, event.getBlock())) {
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         if (!plugin.getConfigManager().isBlockFall())
             return;
 
@@ -423,7 +437,7 @@ public class ResidenceBlockListener implements Listener {
     public void onChestPlace(BlockPlaceEvent event) {
 
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
         if (!plugin.getConfigManager().ShowNoobMessage())
             return;
@@ -467,7 +481,7 @@ public class ResidenceBlockListener implements Listener {
     public void onChestPlaceNearResidence(BlockPlaceEvent event) {
 
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
 
         Player player = event.getPlayer();
@@ -496,7 +510,7 @@ public class ResidenceBlockListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onChestPlaceCreateRes(BlockPlaceEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
         if (!plugin.getConfigManager().isNewPlayerUse())
             return;
@@ -536,7 +550,7 @@ public class ResidenceBlockListener implements Listener {
 
     public static boolean canPlaceBlock(Player player, Block block, boolean informPlayer) {
         // disabling event on world
-        if (Residence.getInstance().isDisabledWorldListener(block.getWorld()))
+        if (Residence.getInstance().isDisabledWorldListener(block))
             return true;
 
         if (ResAdmin.isResAdmin(player)) {
@@ -598,12 +612,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockSpread(BlockSpreadEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.spread.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.spread, event.getBlock())) {
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         Location loc = event.getBlock().getLocation();
         FlagPermissions perms = FlagPermissions.getPerms(loc);
         if (!perms.has(Flags.spread, true)) {
@@ -614,7 +626,7 @@ public class ResidenceBlockListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockPistonRetract(BlockPistonRetractEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
 
         // Disabling listener if flag disabled globally
@@ -658,7 +670,7 @@ public class ResidenceBlockListener implements Listener {
     public void onBlockPistonExtend(BlockPistonExtendEvent event) {
 
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
 
         // Disabling listener if flag disabled globally
@@ -723,7 +735,7 @@ public class ResidenceBlockListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockFromTo(BlockFromToEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
 
         ClaimedResidence fromRes = ClaimedResidence.getByLoc(event.getBlock().getLocation());
@@ -763,13 +775,10 @@ public class ResidenceBlockListener implements Listener {
         // Moved to separate class
         if (Version.isCurrentEqualOrHigher(Version.v1_13_R1))
             return;
-        // Disabling listener if flag disabled globally
-        if (!Flags.dryup.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.dryup, event.getBlock())) {
+            return;
+        }
         CMIMaterial mat = CMIMaterial.get(event.getBlock());
         if (!mat.equals(CMIMaterial.FARMLAND))
             return;
@@ -795,13 +804,10 @@ public class ResidenceBlockListener implements Listener {
         // Moved to separate class
         if (Version.isCurrentEqualOrHigher(Version.v1_13_R1))
             return;
-        // Disabling listener if flag disabled globally
-        if (!Flags.dryup.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.dryup, event.getBlock())) {
+            return;
+        }
         if (!event.getBlock().getWorld().isChunkLoaded((int) Math.floor(event.getBlock().getLocation().getX()) >> 4, ((int) Math.floor(event.getBlock().getLocation().getZ()) >> 4)))
             return;
 
@@ -827,17 +833,14 @@ public class ResidenceBlockListener implements Listener {
     @SuppressWarnings("removal")
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onDispense(BlockDispenseEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.build.isGlobalyEnabled())
-            return;
 
         Block block = event.getBlock();
         if (block == null)
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.build, block)) {
+            return;
+        }
         if (CMIMaterial.get(block.getType()) != CMIMaterial.DISPENSER)
             return;
 
@@ -882,7 +885,7 @@ public class ResidenceBlockListener implements Listener {
     public void onLavaWaterFlow(BlockFromToEvent event) {
 
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
         Material mat = event.getBlock().getType();
 
@@ -913,12 +916,10 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockBurn(BlockBurnEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.firespread.isGlobalyEnabled())
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.firespread, event.getBlock())) {
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
+        }
         FlagPermissions perms = FlagPermissions.getPerms(event.getBlock().getLocation());
         if (!perms.has(Flags.firespread, true))
             event.setCancelled(true);
@@ -926,16 +927,12 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockBurn(PortalCreateEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.build.isGlobalyEnabled())
-            return;
 
         World world = event.getWorld();
 
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(world))
+        if (FlagPermissions.shouldIgnoreCheck(Flags.build, world)) {
             return;
-
+        }
         if (!event.getReason().toString().equals("NETHER_PAIR"))
             return;
 
@@ -1028,7 +1025,7 @@ public class ResidenceBlockListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockIgnite(BlockIgniteEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getBlock()))
             return;
 
         IgniteCause cause = event.getCause();
@@ -1062,36 +1059,100 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onInteractTNT(PlayerInteractEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.ignite.isGlobalyEnabled())
-            return;
 
         Block block = event.getClickedBlock();
         if (block == null)
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.ignite, block)) {
+            return;
+        }
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK)
             return;
 
         if (!CMIMaterial.get(block.getType()).equals(CMIMaterial.TNT))
             return;
 
-        if (event.getItem() == null || !CMIMaterial.get(event.getItem()).equals(CMIMaterial.FLINT_AND_STEEL))
+        CMIMaterial held = CMIMaterial.get(event.getItem());
+        if (held != CMIMaterial.FLINT_AND_STEEL && held != CMIMaterial.FIRE_CHARGE) {
             return;
-
+        }
         Player player = event.getPlayer();
 
-        if (player.hasMetadata("NPC") || ResAdmin.isResAdmin(player))
-            return;
+        if (FlagPermissions.shouldDenyAndNotify(player, block, Flags.ignite, null)) {
+            event.setCancelled(true);
+        }
+    }
 
-        if (FlagPermissions.has(block.getLocation(), player, Flags.ignite, true))
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onHopperMoveItem(InventoryMoveItemEvent event) {
+        // Prevent trolls from pushing derailed hopper minecarts into the Residence to steal items from containers
+        if (Flags.minecartsuction.isGlobalyEnabled()) {
+            InventoryHolder holder = event.getInitiator().getHolder();
+            if (holder instanceof HopperMinecart) {
+                Location loc = ((HopperMinecart) holder).getLocation();
+                if (!CMIMaterial.get(loc.getBlock().getType()).containsCriteria(CMIMC.RAIL)
+                        && FlagPermissions.has(loc, Flags.minecartsuction, FlagCombo.OnlyFalse)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+        }
+        // Protect containers at the edge of the Residence area from theft
+        if (!Flags.container.isGlobalyEnabled() || !plugin.getConfigManager().getHopperCrossResidenceCheck()) {
             return;
+        }
+        Location sourceLoc = null;
+        Location destLoc = null;
 
-        lm.Flag_Deny.sendMessage(player, Flags.ignite);
+        if (Version.isCurrentEqualOrHigher(Version.v1_9_0)) {
+            sourceLoc= event.getSource().getLocation();
+            destLoc = event.getDestination().getLocation();
+
+            // Legacy versions do not support Inventory.getLocation() directly
+        } else {
+            InventoryHolder sourceHolder = event.getSource().getHolder();
+            if (sourceHolder instanceof BlockState) {
+                sourceLoc = ((BlockState) sourceHolder).getLocation();
+            } else if (sourceHolder instanceof Entity) {
+                sourceLoc = ((Entity) sourceHolder).getLocation();
+            }
+
+            InventoryHolder destHolder = event.getDestination().getHolder();
+            if (destHolder instanceof BlockState) {
+                destLoc = ((BlockState) destHolder).getLocation();
+            } else if (destHolder instanceof Entity) {
+                destLoc = ((Entity) destHolder).getLocation();
+            }
+        }
+        ClaimedResidence sourceRes = ClaimedResidence.getByLoc(sourceLoc);
+        ClaimedResidence destRes = ClaimedResidence.getByLoc(destLoc);
+        // Source and Dest not in Res
+        if (sourceRes == null && destRes == null) {
+            return;
+        }
+        // Source and Dest in Res
+        if (sourceRes != null && destRes != null) {
+            // in Same Res, or have Same Res owner
+            if (sourceRes == destRes || sourceRes.isOwner(destRes.getOwner())) {
+                return;
+            }
+            // Not in Same Res and not Same Res owner; hopper can be Source or Dest
+            if (sourceRes.getPermissions().has(Flags.container, true)
+                    && destRes.getPermissions().has(Flags.container, true)) {
+                return;
+            }
+            // Source in Res, Dest definitely not in Res
+        } else if (sourceRes != null) {
+            if (sourceRes.getPermissions().has(Flags.container, true)) {
+                return;
+            }
+            // Dest definitely in Res, Source definitely not in Res
+        } else {
+            if (destRes.getPermissions().has(Flags.container, true)) {
+                return;
+            }
+        }
         event.setCancelled(true);
-
     }
 }

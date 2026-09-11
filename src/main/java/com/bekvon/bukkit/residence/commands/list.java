@@ -1,7 +1,6 @@
 package com.bekvon.bukkit.residence.commands;
 
 import java.util.Arrays;
-import java.util.UUID;
 
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
@@ -9,7 +8,7 @@ import org.bukkit.command.CommandSender;
 import com.bekvon.bukkit.residence.LocaleManager;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.CommandAnnotation;
-import com.bekvon.bukkit.residence.containers.ResidencePlayer;
+import com.bekvon.bukkit.residence.containers.TargetInfo;
 import com.bekvon.bukkit.residence.containers.cmd;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
@@ -22,16 +21,17 @@ public class list implements cmd {
     @Override
     @CommandAnnotation(simple = true, priority = 300)
     public Boolean perform(Residence plugin, CommandSender sender, String[] args, boolean resadmin) {
+
         int page = 1;
         World world = null;
-        String target = null;
+
+        TargetInfo info = new TargetInfo();
 
         for (int i = 0; i < args.length; i++) {
 
-            if (target == null) {
-                ResidencePlayer resP = ResidencePlayer.get(args[i]);
-                if (resP != null) {
-                    target = resP.getName();
+            if (!info.isValid()) {
+                info.defaultIfNotValid(args[i]);
+                if (info.isValid()) {
                     continue;
                 }
             }
@@ -51,28 +51,21 @@ public class list implements cmd {
                     continue;
                 }
             }
-
-            target = args[i];
         }
 
-        if (target == null) {
-            target = sender.getName();
-        }
+        info.defaultIfNotValid(sender);
 
-        if (target != null && !sender.getName().equalsIgnoreCase(target) &&
-                !ResPerm.command_$1_others.hasPermission(sender, this.getClass().getSimpleName())) {
-            lm.General_NoCmdPermission.sendMessage(sender);
-            return true;
-        }
-
-        UUID uuid = ResidencePlayer.getUUID(target);
-
-        if (uuid == null) {
+        if (!info.isValid()) {
             lm.Invalid_Player.sendMessage(sender);
             return false;
         }
 
-        plugin.getResidenceManager().listResidences(sender, uuid, page, false, false, resadmin, world);
+        if (!info.isSame(sender) && !ResPerm.command_$1_others.hasPermission(sender, this.getClass().getSimpleName())) {
+            lm.General_NoCmdPermission.sendMessage(sender);
+            return true;
+        }
+
+        plugin.getResidenceManager().listResidences(sender, info.getUniqueId(), page, false, false, resadmin, world);
 
         return true;
     }

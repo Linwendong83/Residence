@@ -26,14 +26,10 @@ public class ResidenceListener1_12 implements Listener {
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onEntityPickupItemEvent(EntityPickupItemEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.itempickup.isGlobalyEnabled())
-            return;
 
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getItem().getWorld()))
+        if (FlagPermissions.shouldIgnoreCheck(Flags.itempickup, event.getItem())) {
             return;
-
+        }
         Entity entity = event.getEntity();
         if (entity.hasMetadata("NPC"))
             return;
@@ -62,22 +58,18 @@ public class ResidenceListener1_12 implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerItemDamageEvent(PlayerItemDamageEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.nodurability.isGlobalyEnabled())
-            return;
 
         Player player = event.getPlayer();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(player.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.nodurability, player)) {
+            return;
+        }
         if (FlagPermissions.has(player.getLocation(), Flags.nodurability, FlagCombo.FalseOrNone))
             return;
 
-        CMIMaterial held = CMIMaterial.get(event.getItem());
         // https://github.com/Zrips/Residence/issues/359
         // not sure if we need to keep this check line
-        if (held == CMIMaterial.TRIDENT)
+        if (CMIMaterial.get(event.getItem()) == CMIMaterial.TRIDENT)
             return;
 
         event.setCancelled(true);

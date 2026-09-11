@@ -19,7 +19,6 @@ import org.bukkit.event.player.PlayerBucketEntityEvent;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.ResidenceBlockData;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
@@ -62,34 +61,25 @@ public class ResidenceListener1_17 implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerBucketEntityEvent(PlayerBucketEntityEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.animalkilling.isGlobalyEnabled())
-            return;
 
         Entity ent = event.getEntity();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(ent.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.animalkilling, ent)) {
+            return;
+        }
         Player player = event.getPlayer();
-        if (ResAdmin.isResAdmin(player))
-            return;
 
-        if (FlagPermissions.has(ent.getLocation(), player, Flags.animalkilling, FlagCombo.OnlyFalse)) {
-            lm.Flag_Deny.sendMessage(player, Flags.animalkilling);
+        if (FlagPermissions.shouldDenyAndNotify(player, ent, Flags.animalkilling, null)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCopperOxidation(BlockFormEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.copperoxidation.isGlobalyEnabled()) {
-            return;
-        }
+
         Block block = event.getBlock();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld())) {
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.copperoxidation, block)) {
             return;
         }
         if (!isUnwaxedCopper(block)) {
@@ -113,13 +103,10 @@ public class ResidenceListener1_17 implements Listener {
         // https://github.com/PaperMC/Paper/pull/6751
         if (Version.isPaperBranch() && Version.isCurrentEqualOrHigher(Version.v1_18_R2))
             return;
-        // Disabling listener if flag disabled globally
-        if (!Flags.place.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getBlock().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.place, event.getBlock())) {
+            return;
+        }
         if (!event.getSourceBlock().getType().equals(Material.POWDER_SNOW) || event.getBlock().getType().equals(Material.AIR) || event.getBlock().getType().equals(Material.POWDER_SNOW))
             return;
 
@@ -141,14 +128,11 @@ public class ResidenceListener1_17 implements Listener {
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockFertilizeEvent(BlockFertilizeEvent event) {
 
-        // Disabling listener if flag disabled globally
-        if (!Flags.build.isGlobalyEnabled())
-            return;
         Block block = event.getBlock();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.build, block)) {
+            return;
+        }
         Player player = event.getPlayer();
 
         if (player != null) {
@@ -167,9 +151,9 @@ public class ResidenceListener1_17 implements Listener {
         // check build permission for spread blocks
         ClaimedResidence originRes = ClaimedResidence.getByLoc(block.getLocation());
 
-        List<BlockState> blocks = new ArrayList<BlockState>(event.getBlocks());
+        List<BlockState> denySpread = new ArrayList<>();
 
-        for (BlockState oneBlock : blocks) {
+        for (BlockState oneBlock : event.getBlocks()) {
             ClaimedResidence spreadRes = ClaimedResidence.getByLoc(oneBlock.getLocation());
             // spread-block not in Res, skip check
             // origin & spread-block in Same Res, or have Same Res owner, skip check
@@ -180,14 +164,17 @@ public class ResidenceListener1_17 implements Listener {
             // origin & spread-block not in Same Res, not Same Res owner
 
             if (player != null) {
-                if (spreadRes.getPermissions().playerHas(player, Flags.build, FlagCombo.OnlyFalse))
-                    event.getBlocks().remove(oneBlock);
-
-            } else if (spreadRes.getPermissions().has(Flags.build, FlagCombo.OnlyFalse)) {
-                event.getBlocks().remove(oneBlock);
-
+                if (spreadRes.getPermissions().playerHas(player, Flags.build, FlagCombo.OnlyFalse)) {
+                    denySpread.add(oneBlock);
+                }
+            } else {
+                if (spreadRes.getPermissions().has(Flags.build, FlagCombo.OnlyFalse)) {
+                    denySpread.add(oneBlock);
+                }
             }
         }
-
+        if (!denySpread.isEmpty()) {
+            event.getBlocks().removeAll(denySpread);
+        }
     }
 }

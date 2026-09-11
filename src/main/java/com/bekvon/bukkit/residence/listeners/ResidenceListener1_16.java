@@ -31,13 +31,9 @@ public class ResidenceListener1_16 implements Listener {
                 return;
             }
         }
-        // Disabling listener if flag disabled globally
-        if (!Flags.animalkilling.isGlobalyEnabled()) {
-            return;
-        }
         Entity entity = event.getEntity();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(entity.getWorld())) {
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.animalkilling, entity)) {
             return;
         }
         if (event.getTransformReason() != EntityTransformEvent.TransformReason.LIGHTNING) {

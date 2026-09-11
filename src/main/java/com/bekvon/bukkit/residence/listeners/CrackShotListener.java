@@ -3,7 +3,7 @@ package com.bekvon.bukkit.residence.listeners;
 import org.bukkit.Location;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
+import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -29,7 +29,7 @@ public class CrackShotListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void AnimalKilling(WeaponDamageEntityEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getPlayer().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getPlayer()))
             return;
         Entity damager = event.getDamager();
 
@@ -70,9 +70,9 @@ public class CrackShotListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamageByEntityEvent(WeaponDamageEntityEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getPlayer().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getPlayer()))
             return;
-        if (event.getVictim().getType() != EntityType.ITEM_FRAME && !Utils.isArmorStandEntity(event.getVictim().getType()))
+        if (!(event.getVictim() instanceof ItemFrame) && !Utils.isArmorStand(event.getVictim()))
             return;
 
         Entity dmgr = event.getDamager();
@@ -103,7 +103,7 @@ public class CrackShotListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamage(WeaponDamageEntityEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getPlayer().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getPlayer()))
             return;
         if (!(event.getVictim() instanceof Player))
             return;

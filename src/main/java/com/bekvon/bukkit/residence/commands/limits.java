@@ -1,7 +1,6 @@
 package com.bekvon.bukkit.residence.commands;
 
 import java.util.Arrays;
-import java.util.UUID;
 
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -10,9 +9,10 @@ import com.bekvon.bukkit.residence.LocaleManager;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.CommandAnnotation;
 import com.bekvon.bukkit.residence.containers.ResidencePlayer;
+import com.bekvon.bukkit.residence.containers.TargetInfo;
 import com.bekvon.bukkit.residence.containers.cmd;
+import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
-import com.bekvon.bukkit.residence.protection.PlayerManager;
 
 import net.Zrips.CMILib.FileHandler.ConfigReader;
 
@@ -26,23 +26,27 @@ public class limits implements cmd {
 
         if (args.length != 0 && args.length != 1)
             return false;
-        final String[] tempArgs = args;
-        UUID target;
-        boolean rsadm = false;
-        if (tempArgs.length == 0) {
-            target = ((Player) sender).getUniqueId();
-            rsadm = true;
-        } else
-            target = ResidencePlayer.getUUID(tempArgs[0]);
 
-        if (target == null)
+        TargetInfo info = new TargetInfo();
+
+        boolean rsadm = false;
+        if (args.length == 0) {
+            info.defaultIfNotValid(sender);
+            rsadm = true;
+        } else {
+            info.defaultIfNotValid(args[0]);
+        }
+
+        if (!info.isValid())
             return false;
 
-        if (!PlayerManager.getSenderUUID(sender).equals(target) && !ResPerm.command_$1_others.hasPermission(sender, this.getClass().getSimpleName()))
+        if (!info.isSame(sender) && !ResPerm.command_$1_others.hasPermission(sender, this.getClass().getSimpleName())) {
+            lm.General_NoCmdPermission.sendMessage(sender); 
             return true;
+        }
 
-        ResidencePlayer rPlayer = plugin.getPlayerManager().getResidencePlayer(target);
-        rPlayer.getGroup().printLimits(sender, target, rsadm);
+        ResidencePlayer rPlayer = plugin.getPlayerManager().getResidencePlayer(info.getUniqueId());
+        rPlayer.getGroup().printLimits(sender, info.getUniqueId(), rsadm);
         return true;
     }
 

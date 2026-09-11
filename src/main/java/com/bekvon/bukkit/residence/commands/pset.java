@@ -66,7 +66,7 @@ public class pset implements cmd {
             }
 
             if (rplayer == null) {
-                rplayer = Residence.getInstance().getPlayerManager().getResidencePlayer(one);
+                rplayer = ResidencePlayer.get(one);
                 if (rplayer != null) {
                     continue;
                 }

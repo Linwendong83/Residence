@@ -1222,7 +1222,16 @@ public class ResidenceManager implements ResidenceInterface {
                     String name = f.getName();
                     if (!name.startsWith(Residence.saveFilePrefix))
                         continue;
-                    worldnames.add(name.substring(Residence.saveFilePrefix.length(), name.length() - 4));
+                    String worldName = name.substring(Residence.saveFilePrefix.length(), name.length() - 4);
+                    boolean loaded = false;
+                    for (World world : plugin.getServ().getWorlds()) {
+                        if (Residence.getSaveWorldName(world.getName()).equals(worldName)) {
+                            loaded = true;
+                            break;
+                        }
+                    }
+                    if (!loaded)
+                        worldnames.add(worldName);
                 }
             }
             plugin.getServ().getWorlds().forEach((w) -> {

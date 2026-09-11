@@ -34,7 +34,7 @@ public class ShopListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSignInteract(PlayerInteractEvent event) {
         // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getPlayer().getWorld()))
+        if (plugin.isDisabledWorldListener(event.getPlayer()))
             return;
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK)
             return;

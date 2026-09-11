@@ -1,9 +1,12 @@
 package com.bekvon.bukkit.residence.itemlist;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -14,7 +17,7 @@ import net.Zrips.CMILib.Items.CMIMaterial;
 
 public class ItemList {
 
-    protected List<Material> list;
+    protected Set<Material> list;
     protected ListType type;
 
     public ItemList(ListType listType) {
@@ -23,7 +26,7 @@ public class ItemList {
     }
 
     protected ItemList() {
-        list = new ArrayList<Material>();
+        list = EnumSet.noneOf(Material.class);
     }
 
     public static enum ListType {
@@ -102,7 +105,15 @@ public class ItemList {
     protected static ItemList readList(ConfigurationSection node, ItemList list) {
         ListType type = ListType.valueOf(node.getString("Type", "").toUpperCase());
         list.type = type;
-        List<String> items = node.getStringList("Items");
+        Object itemsObj = node.get("Items");
+        List<String> items;
+        if (itemsObj instanceof List) {
+            items = node.getStringList("Items");
+        } else if (itemsObj != null) {
+            items = Collections.singletonList(String.valueOf(itemsObj));
+        } else {
+            items = Collections.emptyList();
+        }
         if (items != null) {
             for (String item : items) {
                 int parse = -1;

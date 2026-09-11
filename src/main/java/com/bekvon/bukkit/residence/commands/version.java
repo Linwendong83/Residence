@@ -30,7 +30,7 @@ public class version implements cmd {
         final String serverType = split.length > 1 ? split[1] : split[0];
 
         try {
-            if (serverType.equalsIgnoreCase("Paper") || serverType.equalsIgnoreCase("purpur") || Version.isPaper()) {
+            if (serverType.equalsIgnoreCase("Paper") || serverType.equalsIgnoreCase("purpur") || Version.isPaperBranch()) {
                 if (Version.isCurrentEqualOrHigher(Version.v1_20_R4))
                     build = Bukkit.getVersion().split("-")[1].split(" ")[0];
                 else

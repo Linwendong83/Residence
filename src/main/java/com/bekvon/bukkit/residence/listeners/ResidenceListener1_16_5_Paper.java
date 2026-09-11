@@ -29,16 +29,12 @@ public class ResidenceListener1_16_5_Paper implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onHitTargetBlock(TargetHitEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.use.isGlobalyEnabled()) {
-            return;
-        }
+
         Block block = event.getHitBlock();
         if (block == null) {
             return;
         }
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld())) {
+        if (FlagPermissions.shouldIgnoreCheck(Flags.use, block)) {
             return;
         }
         if (ResidenceListener1_14.shouldDenyProjectileHit(block, event.getEntity(), Flags.use)) {
@@ -48,13 +44,10 @@ public class ResidenceListener1_16_5_Paper implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityZapEvent(EntityZapEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.animalkilling.isGlobalyEnabled()) {
-            return;
-        }
+
         Entity entity = event.getEntity();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(entity.getWorld())) {
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.animalkilling, entity)) {
             return;
         }
         // Check if animal can be damaged or converted by lightning

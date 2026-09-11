@@ -422,10 +422,6 @@ public class ResidencePlayer {
         return ResidenceBlockListener.canPlaceBlock(this.getPlayer(), block, inform);
     }
 
-    public boolean canDamageEntity(Entity entity, boolean inform) {
-        return ResidenceEntityListener.canDamageEntity(this.getPlayer(), entity, inform);
-    }
-
     public Set<ClaimedResidence> getTrustedResidenceList() {
         return trustedList;
     }

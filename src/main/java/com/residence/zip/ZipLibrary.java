@@ -63,7 +63,7 @@ public class ZipLibrary {
         File saveFile;
         if (plugin.getConfigManager().BackupWorldFiles())
             for (World world : plugin.getServ().getWorlds()) {
-                saveFile = new File(worldFolder, "res_" + world.getName() + ".yml");
+                saveFile = new File(worldFolder, "res_" + Residence.getSaveWorldName(world.getName()) + ".yml");
                 if (saveFile.isFile()) {
                     sources.add(saveFile);
                 }

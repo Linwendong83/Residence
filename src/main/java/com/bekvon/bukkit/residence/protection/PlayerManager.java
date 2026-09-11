@@ -164,7 +164,13 @@ public class PlayerManager implements ResidencePlayerInterface {
             }
         }
 
+        // We should pick the one which is seen last, in case of name collision
+        // UUID record can remain
         if (name != null) {
+            ResidencePlayer byName = playersByName.get(name.toLowerCase());
+            if (byName != null && byName.getData().getLastSeen() < resPlayer.getData().getLastSeen()) {
+                playersByName.remove(byName.getName().toLowerCase());
+            }
             playersByName.put(name.toLowerCase(), resPlayer);
         }
 

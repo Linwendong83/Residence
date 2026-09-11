@@ -1,6 +1,7 @@
 package com.bekvon.bukkit.residence.listeners;
 
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityKnockbackByEntityEvent;
 
@@ -14,8 +15,12 @@ public class ResidenceListener1_21_8_Spigot implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onKnockback(EntityKnockbackByEntityEvent event) {
+        // disabling event on world
+        if (plugin.isDisabledWorldListener(event.getEntity())) {
+            return;
+        }
         if (ResidenceListener1_21_8_Paper.shouldCancelKnockBack(event.getEntity(), event.getSourceEntity()))
             event.setCancelled(true);
     }

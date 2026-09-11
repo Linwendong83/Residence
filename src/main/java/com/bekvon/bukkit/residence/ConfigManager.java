@@ -33,6 +33,7 @@ import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.GenMessageType;
 import com.bekvon.bukkit.residence.containers.RandomTeleport;
 import com.bekvon.bukkit.residence.containers.lm;
+import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagState;
 import com.bekvon.bukkit.residence.selection.VisualizerConfig;
@@ -151,6 +152,7 @@ public class ConfigManager {
     private boolean chatListening;
     private GenMessageType GeneralMessageType;
     protected List<String> MessageType;
+    protected int FlagDenyMessageCooldown;
 
     protected boolean ActionBarOnSelection;
     protected boolean visualizer;
@@ -196,9 +198,11 @@ public class ConfigManager {
     private int SelectionNetherHeight = 128;
     protected boolean NoCostForYBlocks = false;
     protected boolean WorldEditIntegration = false;
+    protected boolean DisabledWorld;
     protected boolean DisableListeners;
     protected boolean DisableCommands;
     private boolean DisableResidenceCreation;
+    private boolean HopperCrossResidenceCheck;
 
     // Town
 //    private boolean TownEnabled = false;
@@ -487,7 +491,8 @@ public class ConfigManager {
                 "Group: default",
                 "this is the actual list of material names that this list allows or disallows",
                 "You can look up the material name by item ID in game by typing /res material <id>",
-                "Alternativly, you can simply use the item ID in the list, but its less descriptive and harder to see what the list allows or dissallows at a glance");
+                "Alternativly, you can simply use the item ID in the list, but its less descriptive and harder to see what the list allows or dissallows at a glance",
+                "Items:", "- Apple", "- Stone", "- Lava_Bucket");
 
         for (Flags fl : Flags.values()) {
             cfg.addComment("Global.FlagPermission." + fl, "Applies to: " + fl.getFlagMode(), fl.getDesc());
@@ -652,6 +657,15 @@ public class ConfigManager {
         c.addComment("Global.Optimizations.DisabledWorlds.DisableResidenceCreation", "Disables residence creation in included worlds");
         DisableResidenceCreation = c.get("Global.Optimizations.DisabledWorlds.DisableResidenceCreation", true);
 
+        if (DisabledWorldsList.isEmpty() && EnabledWorldsList.isEmpty()) {
+            DisabledWorld = false;
+            DisableListeners = false;
+            DisableCommands = false;
+            DisableResidenceCreation = false;
+        } else {
+            DisabledWorld = true;
+        }
+
         c.addComment("Global.Optimizations.ItemPickUpDelay", "Delay in seconds between item pickups after residence flag prevents it", "Keep it at arround 10 sec to lower unesecery checks");
         ItemPickUpDelay = c.get("Global.Optimizations.ItemPickUpDelay", 10);
 
@@ -810,6 +824,11 @@ public class ConfigManager {
         WalkSpeed2 = WalkSpeed2 < 0 ? 0 : WalkSpeed2;
         WalkSpeed2 = WalkSpeed2 > 5 ? 5 : WalkSpeed2;
         WalkSpeed2 = WalkSpeed2 / 5.0;
+
+        c.addComment("Global.Optimizations.ExtraProtection.HopperCrossResidenceCheck",
+                "Whether to check hoppers crossing Residence borders to prevent edge container theft (default: true)",
+                "If Flags.container is globally disabled, this option has no effect");
+        HopperCrossResidenceCheck = c.get("Global.Optimizations.ExtraProtection.HopperCrossResidenceCheck", true);
 
         SignsMaxPerResidence = c.get("Global.Signs.MaxPerResidence", 5);
         SignsMaxPerResidence = SignsMaxPerResidence < 0 ? 0 : SignsMaxPerResidence;
@@ -1189,6 +1208,14 @@ public class ConfigManager {
         c.addComment("Global.Messages.MessageType", "Classified under Language MessageType of GeneralMessages");
         MessageType = new ArrayList<>(c.get("Global.Messages.MessageType", Arrays.asList("Flag_Deny", "Residence_FlagDeny", "General_NoPVPZone")));
 
+        c.addComment("Global.Messages.FlagDenyMessageCooldown", "Cooldown for sending duplicate Flag deny messages, in seconds(default: 1)",
+                "Only effective for 1.16+ versions; suppresses spam from repeated Flag deny messages");
+        FlagDenyMessageCooldown = (c.get("Global.Messages.FlagDenyMessageCooldown", 1));
+
+        if (Version.isCurrentEqualOrHigher(Version.v1_16_0) && FlagDenyMessageCooldown > 0) {
+            DenyMessageCache.reloadDenyMessageCache(FlagDenyMessageCooldown);
+        }
+
         ActionBarOnSelection = c.get("Global.ActionBar.ShowOnSelection", true);
 
         c.addComment("Global.ResidenceChatEnable", "Enable or disable residence chat channels.");
@@ -1263,6 +1290,7 @@ public class ConfigManager {
         NewPlayerRangeY = c.get("Global.NewPlayer.Range.Y", 5);
         NewPlayerRangeZ = c.get("Global.NewPlayer.Range.Z", 5);
 
+        customContainers.clear();
         c.addComment("Global.CustomContainers", "Experimental - The following settings are lists of block IDs to be used as part of the checks for the 'container' and 'use' flags when using mods.");
         List<String> pls = c.get("Global.CustomContainers", new ArrayList<String>());
         for (String one : pls) {
@@ -1271,6 +1299,7 @@ public class ConfigManager {
                 customContainers.add(mat);
         }
 
+        customBothClick.clear();
         pls = c.get("Global.CustomBothClick", new ArrayList<String>());
         for (String one : pls) {
             Material mat = CMILib.getInstance().getItemManager().getMaterial(one);
@@ -1278,6 +1307,7 @@ public class ConfigManager {
                 customBothClick.add(mat);
         }
 
+        customRightClick.clear();
         pls = c.get("Global.CustomRightClick", new ArrayList<String>());
         for (String one : pls) {
             Material mat = CMILib.getInstance().getItemManager().getMaterial(one);
@@ -2087,6 +2117,10 @@ public class ConfigManager {
         return MessageType;
     }
 
+    public int getFlagDenyMessageCooldown() {
+        return FlagDenyMessageCooldown;
+    }
+
     @Deprecated
     public boolean isEnterAnimation() {
         return VisualizerConfig.isEnterAnimation();
@@ -2210,6 +2244,10 @@ public class ConfigManager {
 
     public List<String> getTeleportBlockedWorlds() {
         return TeleportBlockedWorlds;
+    }
+
+    public boolean getHopperCrossResidenceCheck() {
+        return HopperCrossResidenceCheck;
     }
 
 //    public int getTownMinRange() {

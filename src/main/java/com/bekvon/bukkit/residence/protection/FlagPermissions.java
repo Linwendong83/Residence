@@ -21,12 +21,15 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.MinimizeFlags;
+import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.ResidencePlayer;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionGroup;
@@ -1748,5 +1751,41 @@ public class FlagPermissions {
 
     public static void setIgnoreGroupedFlagsAccess(boolean flagsAccess) {
         ignoreGroupedFlagsAccess = flagsAccess;
+    }
+
+    public static boolean shouldIgnoreCheck(@NotNull Flags flag, Block block) {
+        return !flag.isGlobalyEnabled() || Residence.getInstance().isDisabledWorldListener(block);
+    }
+
+    public static boolean shouldIgnoreCheck(@NotNull Flags flag, Entity entity) {
+        return !flag.isGlobalyEnabled() || Residence.getInstance().isDisabledWorldListener(entity);
+    }
+
+    public static boolean shouldIgnoreCheck(@NotNull Flags flag, World world) {
+        return !flag.isGlobalyEnabled() || Residence.getInstance().isDisabledWorldListener(world);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Location target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
+        if (player.hasMetadata("NPC")) {
+            return false;
+        }
+        FlagPermissions perms = FlagPermissions.getPerms(target, player);
+        // if subFlag is not needed, please pass null
+        boolean result = (subFlag == null || perms.playerHas(player, subFlag, true));
+        // if mainFlag is in None state -> use subFlag result
+        if (perms.playerHas(player, mainFlag, result) || ResAdmin.isResAdmin(player)) {
+            return false;
+        }
+        // if mainFlag state is false, deny and notify the player
+        lm.Flag_Deny.sendMessage(player, mainFlag);
+        return true;
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Block target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Entity target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag);
     }
 }

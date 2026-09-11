@@ -47,6 +47,9 @@ public class VisualizerConfig {
         if (Version.isCurrentEqualOrHigher(Version.v1_19_4)) {
             c.addComment("Global.Visualizer.Type", "Which type of visualization we should use. Particle or Modern.");
             setUseModernVersion(c.get("Global.Visualizer.Type", "Modern").equalsIgnoreCase("Modern"));
+            if (!isUseModernVersion()) {
+                CuboidDisplayManager.removeAllPlayerDisplays();
+            }
         } else {
             setUseModernVersion(false);
         }

@@ -4,7 +4,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
@@ -25,7 +24,6 @@ import org.bukkit.event.vehicle.VehicleDamageEvent;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
@@ -66,68 +64,43 @@ public class ResidenceListener1_14 implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onLecternBookTake(PlayerTakeLecternBookEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.container.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getLectern().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.container, event.getLectern().getWorld())) {
+            return;
+        }
         Player player = event.getPlayer();
 
-        if (ResAdmin.isResAdmin(player))
-            return;
-
-        FlagPermissions perms = FlagPermissions.getPerms(event.getLectern().getLocation(), player);
-        if (perms.playerHas(player, Flags.container, true))
-            return;
-
-        lm.Flag_Deny.sendMessage(player, Flags.container);
-
-        event.setCancelled(true);
-
+        if (FlagPermissions.shouldDenyAndNotify(player, event.getLectern().getLocation(), Flags.container, null)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onVehicleDamage(VehicleDamageEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.vehicledestroy.isGlobalyEnabled())
-            return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getVehicle().getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.vehicledestroy, event.getVehicle())) {
+            return;
+        }
         Entity attacker = event.getAttacker();
-        if (attacker instanceof Player) {
 
-            Player player = (Player) attacker;
+        if (!(attacker instanceof Player)) {
+            return;
+        }
+        Player player = (Player) attacker;
 
-            if (ResAdmin.isResAdmin(player))
-                return;
-
-            FlagPermissions perms = FlagPermissions.getPerms(event.getVehicle().getLocation(), player);
-            if (perms.playerHas(player, Flags.vehicledestroy, true))
-                return;
-
-            lm.Flag_Deny.sendMessage(player, Flags.vehicledestroy);
-
+        if (FlagPermissions.shouldDenyAndNotify(player, event.getVehicle(), Flags.vehicledestroy, null)) {
             event.setCancelled(true);
-
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onProjectileHitBell(ProjectileHitEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.use.isGlobalyEnabled()) {
-            return;
-        }
+
         Block block = event.getHitBlock();
         if (block == null) {
             return;
         }
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld())) {
+        if (FlagPermissions.shouldIgnoreCheck(Flags.use, block)) {
             return;
         }
         if (block.getType() != Material.BELL) {
@@ -142,14 +115,7 @@ public class ResidenceListener1_14 implements Listener {
         Player player = Utils.potentialProjectileToPlayer(projectile);
         if (player != null) {
 
-            if (ResAdmin.isResAdmin(player)) {
-                return false;
-            }
-            if (FlagPermissions.has(block.getLocation(), player, flag, FlagCombo.OnlyFalse)) {
-                lm.Flag_Deny.sendMessage(player, flag);
-                return true;
-            }
-            return false;
+            return FlagPermissions.shouldDenyAndNotify(player, block, flag, null);
 
         } else {
             // projectile not player source
@@ -164,16 +130,14 @@ public class ResidenceListener1_14 implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onPlayerInteractHarvest(PlayerInteractEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.harvest.isGlobalyEnabled())
-            return;
 
         Block block = event.getClickedBlock();
         if (block == null)
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.harvest, block)) {
             return;
+        }
 
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK)
             return;
@@ -190,28 +154,20 @@ public class ResidenceListener1_14 implements Listener {
         }
 
         Player player = event.getPlayer();
-        if (ResAdmin.isResAdmin(player))
-            return;
 
-        if (FlagPermissions.has(block.getLocation(), player, Flags.harvest, true))
-            return;
-
-        lm.Flag_Deny.sendMessage(player, Flags.harvest);
-        event.setCancelled(true);
-
+        if (FlagPermissions.shouldDenyAndNotify(player, block, Flags.harvest, null)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCoralDryFade(BlockFadeEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.coraldryup.isGlobalyEnabled())
-            return;
 
         Block block = event.getBlock();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.coraldryup, block)) {
+            return;
+        }
         Material mat = block.getType();
 
         if (!(isBlockTag(mat, "corals") || isBlockTag(mat, "coral_blocks") || isBlockTag(mat, "wall_corals")))
@@ -224,16 +180,11 @@ public class ResidenceListener1_14 implements Listener {
 
 	@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
 	public void onVanillaRaidTrigger(RaidTriggerEvent event) {
-		// Disabling listener if flag disabled globally
-		if (!Flags.raid.isGlobalyEnabled()) {
-			return;
-		}
-		Location raidLoc = event.getRaid().getLocation();
-		// disabling event on world
-		if (plugin.isDisabledWorldListener(raidLoc.getWorld())) {
-			return;
-		}
-        if (FlagPermissions.has(raidLoc, Flags.raid, true)) {
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.raid, event.getWorld())) {
+            return;
+        }
+        if (FlagPermissions.has(event.getRaid().getLocation(), Flags.raid, true)) {
             return;
         }
         lm.Flag_Deny.sendMessage(event.getPlayer(), Flags.raid);

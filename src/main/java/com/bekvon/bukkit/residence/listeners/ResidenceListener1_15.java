@@ -11,8 +11,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.containers.lm;
-import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 
 import net.Zrips.CMILib.CMILib;
@@ -29,17 +27,14 @@ public class ResidenceListener1_15 implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerInteractBeeHive(PlayerInteractEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.build.isGlobalyEnabled())
-            return;
 
         Block block = event.getClickedBlock();
         if (block == null)
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.build, block)) {
+            return;
+        }
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK)
             return;
 
@@ -68,15 +63,9 @@ public class ResidenceListener1_15 implements Listener {
         }
 
         Player player = event.getPlayer();
-        if (ResAdmin.isResAdmin(player))
-            return;
 
-        FlagPermissions perms = FlagPermissions.getPerms(block.getLocation(), player);
-        if (perms.playerHas(player, flag, perms.playerHas(player, Flags.build, true)))
-            return;
-
-        lm.Flag_Deny.sendMessage(player, flag);
-        event.setCancelled(true);
-
+        if (FlagPermissions.shouldDenyAndNotify(player, block, flag, Flags.build)) {
+            event.setCancelled(true);
+        }
     }
 }

@@ -16,7 +16,9 @@ public class confirm implements cmd {
     @Override
     @CommandAnnotation(info = "Confirms removal of a residence.", usage = { "&eUsage: &6/res confirm", "Confirms removal of a residence." }, regVar = { 0 }, consoleVar = { 0 })
     public Boolean perform(Residence plugin, CommandSender sender, String[] args, boolean resadmin) {
+        
         ClaimedResidence res = plugin.deleteConfirm.remove(PlayerManager.getSenderUUID(sender));
+        
         if (res == null) {
             lm.Invalid_Residence.sendMessage(sender);
             return true;

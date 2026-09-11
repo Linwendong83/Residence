@@ -29,8 +29,8 @@ public class pmirror implements cmd {
             return true;
         }
 
-        ResidencePlayer source = plugin.getPlayerManager().getResidencePlayer(args[args.length - 2]);
-        ResidencePlayer target = plugin.getPlayerManager().getResidencePlayer(args[args.length - 1]);
+        ResidencePlayer source = ResidencePlayer.get(args[args.length - 2]);
+        ResidencePlayer target = ResidencePlayer.get(args[args.length - 1]);
         if (source == null || target == null) {
             lm.Invalid_Player.sendMessage(sender);
             return true;

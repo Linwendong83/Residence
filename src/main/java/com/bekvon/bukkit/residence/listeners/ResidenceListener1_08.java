@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -15,11 +16,10 @@ import org.bukkit.event.player.PlayerUnleashEntityEvent;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.containers.ResAdmin;
-import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
-import com.bekvon.bukkit.residence.utils.Utils;
+
+import net.Zrips.CMILib.Version.Version;
 
 public class ResidenceListener1_08 implements Listener {
 
@@ -31,61 +31,48 @@ public class ResidenceListener1_08 implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerInteractAtArmoStand(PlayerInteractAtEntityEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.container.isGlobalyEnabled())
-            return;
 
         Player player = event.getPlayer();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(player.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.container, player)) {
+            return;
+        }
         Entity ent = event.getRightClicked();
-        if (!Utils.isArmorStandEntity(ent.getType()))
+
+        if (!(ent instanceof ArmorStand)) {
             return;
-
-        if (ResAdmin.isResAdmin(player))
-            return;
-
-        FlagPermissions perms = FlagPermissions.getPerms(ent.getLocation(), player);
-
-        if (!perms.playerHas(player, Flags.container, perms.playerHas(player, Flags.use, true))) {
+        }
+        if (FlagPermissions.shouldDenyAndNotify(player, ent, Flags.container, Flags.use)) {
             event.setCancelled(true);
-            lm.Flag_Deny.sendMessage(player, Flags.container);
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void AnimalUnleash(PlayerUnleashEntityEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.leash.isGlobalyEnabled())
-            return;
 
         Entity entity = event.getEntity();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(entity.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.leash, entity)) {
+            return;
+        }
         Player player = event.getPlayer();
-
-        if (ResAdmin.isResAdmin(player))
-            return;
-
-        FlagPermissions perms = FlagPermissions.getPerms(entity.getLocation(), player);
-        if (perms.playerHas(player, Flags.leash, true))
-            return;
-
-        lm.Flag_Deny.sendMessage(player, Flags.leash);
-
-        event.setCancelled(true);
+        if (FlagPermissions.shouldDenyAndNotify(player, entity, Flags.leash, null)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockExplodeEvent(BlockExplodeEvent event) {
-
+        // ExplosionResult.TRIGGER_BLOCK does not destroy blocks
+        // it is triggered by (Enchantment: Wind Burst)
+        if (Version.isCurrentEqualOrHigher(Version.v1_21_0)
+                && event.getExplosionResult() == org.bukkit.ExplosionResult.TRIGGER_BLOCK) {
+            ResidenceListener1_21.onWindExplode(event);
+            return;
+        }
         Block sourceBlock = event.getBlock();
         // disabling event on world
-        if (plugin.isDisabledWorldListener(sourceBlock.getWorld())) {
+        if (plugin.isDisabledWorldListener(sourceBlock)) {
             return;
         }
         if (Flags.explode.isGlobalyEnabled()) {
@@ -105,8 +92,8 @@ public class ResidenceListener1_08 implements Listener {
                 preserve.add(block);
             }
         }
-        for (Block block : preserve) {
-            event.blockList().remove(block);
+        if (!preserve.isEmpty()) {
+            event.blockList().removeAll(preserve);
         }
     }
 }

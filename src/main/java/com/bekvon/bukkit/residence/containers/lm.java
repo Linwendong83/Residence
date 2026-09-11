@@ -9,10 +9,12 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import com.bekvon.bukkit.residence.Residence;
+import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache;
 
 import net.Zrips.CMILib.ActionBar.CMIActionBar;
 import net.Zrips.CMILib.Colors.CMIChatColor;
 import net.Zrips.CMILib.TitleMessages.CMITitleMessage;
+import net.Zrips.CMILib.Version.Version;
 
 public enum lm {
     Invalid_Player("&cInvalid player name..."),
@@ -613,6 +615,36 @@ public enum lm {
         return Residence.getInstance().getLM().getMessageList(this);
     }
 
+    public void sendMessage(Player player, Flags flag) {
+        if (player == null || flag == null) {
+            return;
+        }
+        if (Version.isCurrentLower(Version.v1_16_0)) {
+            lm.Flag_Deny.sendMessage((CommandSender) player, flag);
+
+        } else {
+            int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
+            if (cooldownSeconds <= 0 || DenyMessageCache.shouldSendDenyMessage(player, flag)) {
+                lm.Flag_Deny.sendMessage((CommandSender) player, flag);
+            }
+        }
+    }
+
+    public void sendMessage(Player player, Flags flag, String string) {
+        if (player == null || flag == null) {
+            return;
+        }
+        if (Version.isCurrentLower(Version.v1_16_0)) {
+            lm.Residence_FlagDeny.sendMessage((CommandSender) player, flag, string);
+
+        } else {
+            int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
+            if (cooldownSeconds <= 0 || DenyMessageCache.shouldSendDenyMessage(player, flag)) {
+                lm.Residence_FlagDeny.sendMessage((CommandSender) player, flag, string);
+            }
+        }
+    }
+
     public void sendMessage(CommandSender sender, Object... variables) {
 
         if (sender == null)
@@ -632,9 +664,6 @@ public enum lm {
                     }
 
                     Player player = (Player) sender;
-                    if (player.hasMetadata("NPC")) {
-                        return;
-                    }
 
                     switch (Residence.getInstance().getConfigManager().getGeneralMessageType()) {
                     case ActionBar:

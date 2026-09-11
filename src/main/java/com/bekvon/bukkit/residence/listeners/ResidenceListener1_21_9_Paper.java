@@ -29,14 +29,10 @@ public class ResidenceListener1_21_9_Paper implements Listener {
 
         if (!event.isAllowed())
             return;
-        // Disabling listener if flag disabled globally
-        if (!Flags.golemopenchest.isGlobalyEnabled())
-            return;
 
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getEntity().getWorld()))
+        if (FlagPermissions.shouldIgnoreCheck(Flags.golemopenchest, event.getEntity())) {
             return;
-
+        }
         if (event.getEntityType() != EntityType.COPPER_GOLEM)
             return;
 
@@ -51,15 +47,12 @@ public class ResidenceListener1_21_9_Paper implements Listener {
     // Prevent external copper golems from forming statues inside Residence
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onCopperGolemStatueForm(EntityChangeBlockEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.build.isGlobalyEnabled())
-            return;
 
         Block block = event.getBlock();
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(block.getWorld()))
-            return;
 
+        if (FlagPermissions.shouldIgnoreCheck(Flags.build, block)) {
+            return;
+        }
         if (event.getEntityType() != EntityType.COPPER_GOLEM)
             return;
 

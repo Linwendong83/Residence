@@ -21,17 +21,15 @@ public class ResidenceListener1_10 implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityHotFloorDamage(EntityDamageEvent event) {
-        // Disabling listener if flag disabled globally
-        if (!Flags.hotfloor.isGlobalyEnabled())
+
+        Entity ent = event.getEntity();
+
+        if (FlagPermissions.shouldIgnoreCheck(Flags.hotfloor, event.getEntity())) {
             return;
-        // disabling event on world
-        if (plugin.isDisabledWorldListener(event.getEntity().getWorld()))
-            return;
+        }
 
         if (event.getCause() != DamageCause.HOT_FLOOR)
             return;
-
-        Entity ent = event.getEntity();
 
         if (!FlagPermissions.has(ent.getLocation(), Flags.hotfloor, true)) {
             event.setCancelled(true);

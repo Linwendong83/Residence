@@ -22,8 +22,10 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
@@ -1003,7 +1005,7 @@ public class Residence extends JavaPlugin {
         if (ymlSaveLoc.isFile()) {
             File backupFolder = new File(worldFolder, "Backup");
             backupFolder.mkdirs();
-            File backupFile = new File(backupFolder, "res_" + worldName + ".yml");
+            File backupFile = new File(backupFolder, "res_" + getSaveWorldName(worldName) + ".yml");
             if (backupFile.isFile()) {
                 backupFile.delete();
             }
@@ -1028,14 +1030,14 @@ public class Residence extends JavaPlugin {
             } catch (Throwable e) {
             }
 
-            File ymlSaveLoc = new File(worldFolder, "res_" + entry.getKey() + ".yml");
+            File ymlSaveLoc = new File(worldFolder, "res_" + getSaveWorldName(entry.getKey()) + ".yml");
 
             if (emptyRecord) {
                 saveBackup(ymlSaveLoc, entry.getKey(), worldFolder);
                 continue;
             }
 
-            File tmpFile = new File(worldFolder, "tmp_res_" + entry.getKey() + ".yml");
+            File tmpFile = new File(worldFolder, "tmp_res_" + getSaveWorldName(entry.getKey()) + ".yml");
 
             syml = new YMLSaveHelper(tmpFile);
             if (this.getResidenceManager().getMessageCatch(entry.getKey()) != null)
@@ -1128,6 +1130,16 @@ public class Residence extends JavaPlugin {
 
     public final static String saveFilePrefix = "res_";
 
+    /**
+     * Replaces path separators in a world name for use in save file names.
+     *
+     * @param worldName world name
+     * @return file-safe world name
+     */
+    public static String getSaveWorldName(String worldName) {
+        return worldName.replace('/', '_');
+    }
+
     private void loadFlags(String worldName, YMLSaveHelper yml) {
         if (!yml.getRoot().containsKey("Flags"))
             return;
@@ -1196,7 +1208,7 @@ public class Residence extends JavaPlugin {
             HashMap<String, Object> worlds = new HashMap<>();
 
             for (String worldName : this.getResidenceManager().getWorldNames()) {
-                loadFile = new File(worldFolder, saveFilePrefix + worldName + ".yml");
+                loadFile = new File(worldFolder, saveFilePrefix + getSaveWorldName(worldName) + ".yml");
                 if (!loadFile.isFile())
                     continue;
 
@@ -1341,49 +1353,65 @@ public class Residence extends JavaPlugin {
         return isDisabledWorld(world.getName());
     }
 
-    public boolean isDisabledWorld(String worldname) {
-        if (!getConfigManager().EnabledWorldsList.isEmpty()) {
-            return !getConfigManager().EnabledWorldsList.contains(worldname);
+    public boolean isDisabledWorld(String worldName) {
+        if (getConfigManager().DisabledWorld) {
+            if (!getConfigManager().EnabledWorldsList.isEmpty()) {
+                return !getConfigManager().EnabledWorldsList.contains(worldName);
+            }
+            return getConfigManager().DisabledWorldsList.contains(worldName);
         }
-        return getConfigManager().DisabledWorldsList.contains(worldname);
+        return false;
     }
 
     public boolean isDisabledWorldListener(Location loc) {
+        if (loc != null && getConfigManager().DisableListeners) {
+            return isDisabledWorldListener(loc.getWorld().getName());
+        }
+        return false;
+    }
 
-        if (loc == null)
-            return false;
+    public boolean isDisabledWorldListener(Block block) {
+        if (block != null && getConfigManager().DisableListeners) {
+            return isDisabledWorldListener(block.getWorld().getName());
+        }
+        return false;
+    }
 
-        return isDisabledWorldListener(loc.getWorld().getName());
+    public boolean isDisabledWorldListener(Entity entity) {
+        if (entity != null && getConfigManager().DisableListeners) {
+            return isDisabledWorldListener(entity.getWorld().getName());
+        }
+        return false;
     }
 
     public boolean isDisabledWorldListener(World world) {
-
-        if (world == null)
-            return false;
-
-        return isDisabledWorldListener(world.getName());
+        if (world != null && getConfigManager().DisableListeners) {
+            return isDisabledWorldListener(world.getName());
+        }
+        return false;
     }
 
-    public boolean isDisabledWorldListener(String worldname) {
-
+    private boolean isDisabledWorldListener(String worldName) {
         if (!getConfigManager().EnabledWorldsList.isEmpty()) {
-            return !getConfigManager().EnabledWorldsList.contains(worldname) && getConfigManager().DisableListeners;
+            return !getConfigManager().EnabledWorldsList.contains(worldName);
         }
-
-        return getConfigManager().DisabledWorldsList.contains(worldname) && getConfigManager().DisableListeners;
+        return getConfigManager().DisabledWorldsList.contains(worldName);
     }
 
     public boolean isDisabledWorldCommand(World world) {
-        return isDisabledWorldCommand(world.getName());
+        if (getConfigManager().DisableCommands) {
+            return isDisabledWorldCommand(world.getName());
+        }
+        return false;
     }
 
-    public boolean isDisabledWorldCommand(String worldname) {
+    private boolean isDisabledWorldCommand(String worldName) {
 
         if (!getConfigManager().EnabledWorldsList.isEmpty()) {
-            return !getConfigManager().EnabledWorldsList.contains(worldname) && getConfigManager().DisableCommands;
+            return !getConfigManager().EnabledWorldsList.contains(worldName);
         }
 
-        return getConfigManager().DisabledWorldsList.contains(worldname) && getConfigManager().DisableCommands;
+        return getConfigManager().DisabledWorldsList.contains(worldName);
     }
 
     public InformationPager getInfoPageManager() {

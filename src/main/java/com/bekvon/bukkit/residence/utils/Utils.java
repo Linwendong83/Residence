@@ -1,6 +1,7 @@
 package com.bekvon.bukkit.residence.utils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -15,16 +16,20 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Animals;
 import org.bukkit.entity.Bat;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.IronGolem;
+import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.NPC;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Snowman;
+import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Vehicle;
+import org.bukkit.entity.Villager;
 import org.bukkit.entity.WaterMob;
+import org.bukkit.entity.minecart.PoweredMinecart;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.projectiles.BlockProjectileSource;
 import org.bukkit.util.BlockIterator;
@@ -296,37 +301,50 @@ public class Utils {
         return false;
     }
 
-    public static boolean isArmorStandEntity(EntityType ent) {
-        if (Version.isCurrentEqualOrLower(Version.v1_7_R4))
-            return false;
-        return ent == org.bukkit.entity.EntityType.ARMOR_STAND;
+    public static boolean isTamed(Entity entity) {
+        return entity instanceof Tameable && ((Tameable) entity).isTamed();
+    }
+
+    public static boolean isVillagerOrTrader(Entity entity) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_14_0)) {
+            return entity instanceof org.bukkit.entity.AbstractVillager;
+        }
+        return entity instanceof Villager;
+    }
+
+    public static boolean isPhantom(Entity entity) {
+        return Version.isCurrentEqualOrHigher(Version.v1_13_0) && entity instanceof org.bukkit.entity.Phantom;
+    }
+
+    public static boolean isArmorStand(Entity entity) {
+        return Version.isCurrentEqualOrHigher(Version.v1_8_0) && entity instanceof org.bukkit.entity.ArmorStand;
     }
 
     public static boolean isSpectator(org.bukkit.GameMode mode) {
-        if (Version.isCurrentEqualOrLower(Version.v1_7_R4))
-            return false;
-        return mode == org.bukkit.GameMode.SPECTATOR;
+        return Version.isCurrentEqualOrHigher(Version.v1_8_0) && mode == org.bukkit.GameMode.SPECTATOR;
     }
 
     public static boolean isMainHand(PlayerInteractEvent event) {
-        if (Version.isCurrentEqualOrLower(Version.v1_8_R3))
-            return true;
-        return event.getHand() == EquipmentSlot.HAND ? true : false;
+        if (Version.isCurrentEqualOrHigher(Version.v1_9_0)) {
+            return event.getHand() == EquipmentSlot.HAND;
+        }
+        return true;
     }
 
-    public static boolean isChorusTeleport(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause tpcause) {
-        if (Version.isCurrentEqualOrLower(Version.v1_8_R3))
-            return false;
-        return tpcause == org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.CHORUS_FRUIT;
+    public static boolean isContainerEntityWithoutGui(Entity entity) {
+        return  entity instanceof ItemFrame
+                || entity instanceof PoweredMinecart
+                || (Version.isCurrentEqualOrHigher(Version.v1_19_0) && entity instanceof org.bukkit.entity.Allay);
+    }
+
+    public static boolean isChorusTeleport(TeleportCause tpcause) {
+        return Version.isCurrentEqualOrHigher(Version.v1_9_0) && tpcause == TeleportCause.CHORUS_FRUIT;
     }
 
     public static List<Block> getPistonRetractBlocks(BlockPistonRetractEvent event) {
-        List<Block> blocks = new ArrayList<Block>();
-        if (Version.isCurrentEqualOrLower(Version.v1_7_R4)) {
-            blocks.add(event.getBlock());
-        } else {
-            blocks.addAll(event.getBlocks());
+        if (Version.isCurrentEqualOrHigher(Version.v1_8_0)) {
+            return event.getBlocks();
         }
-        return blocks;
+        return Collections.singletonList(event.getBlock());
     }
 }

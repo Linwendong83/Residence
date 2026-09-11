@@ -20,12 +20,16 @@ public class command implements cmd {
     public Boolean perform(Residence plugin, CommandSender sender, String[] args, boolean resadmin) {
 
         String cmd = args[args.length - 1];
+        
         if (!cmd.equalsIgnoreCase("list"))
             args = Arrays.copyOfRange(args, 0, args.length - 1);
+        
         ClaimedResidence res = null;
         String action = args.length > 0 ? args[args.length - 1].toLowerCase() : "";
+        
         if (args.length > 0)
             args = Arrays.copyOfRange(args, 0, args.length - 1);
+        
         if (args.length > 0)
             res = plugin.getResidenceManager().getByName(args[0]);
 
