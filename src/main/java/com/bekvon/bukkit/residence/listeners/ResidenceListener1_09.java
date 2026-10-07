@@ -6,6 +6,7 @@ import java.util.Iterator;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -29,6 +30,7 @@ import com.bekvon.bukkit.residence.event.ResidenceChangedEvent;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
+import com.bekvon.bukkit.residence.protection.PvpProtection;
 import com.bekvon.bukkit.residence.utils.Teleporting;
 
 import net.Zrips.CMILib.Items.CMIMaterial;
@@ -38,9 +40,11 @@ import net.Zrips.CMILib.Version.Schedulers.CMIScheduler;
 public class ResidenceListener1_09 implements Listener {
 
     private Residence plugin;
+    private final PvpProtection pvpProtection;
 
     public ResidenceListener1_09(Residence plugin) {
         this.plugin = plugin;
+        this.pvpProtection = new PvpProtection(plugin);
     }
 
     @EventHandler
@@ -111,6 +115,7 @@ public class ResidenceListener1_09 implements Listener {
     public void onLingeringSplashPotion(LingeringPotionSplashEvent event) {
 
         ThrownPotion potion = event.getEntity();
+        pvpProtection.copyLaunch(potion, event.getAreaEffectCloud());
 
         if (FlagPermissions.shouldIgnoreCheck(Flags.pvp, potion)) {
             return;
@@ -182,19 +187,19 @@ public class ResidenceListener1_09 implements Listener {
         if (!harmfull)
             return;
 
-        Entity ent = event.getEntity();
+        AreaEffectCloud ent = event.getEntity();
+        Player sourcePlayer = ent.getSource() instanceof Player ? (Player) ent.getSource() : pvpProtection.getPlayer(ent);
         boolean srcpvp = FlagPermissions.has(ent.getLocation(), Flags.pvp, true);
         Iterator<LivingEntity> it = event.getAffectedEntities().iterator();
         while (it.hasNext()) {
             LivingEntity target = it.next();
             if (!(target instanceof Player))
                 continue;
+            if (target.hasMetadata("NPC") || (sourcePlayer != null && sourcePlayer.hasMetadata("NPC")))
+                continue;
             Boolean tgtpvp = FlagPermissions.has(target.getLocation(), Flags.pvp, true);
-            if (!srcpvp || !tgtpvp) {
-                event.getAffectedEntities().remove(target);
-                event.getEntity().remove();
-                break;
-            }
+            if (!srcpvp || !tgtpvp || pvpProtection.isDenied(ent, sourcePlayer, (Player) target, false))
+                it.remove();
         }
     }
 

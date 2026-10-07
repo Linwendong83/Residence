@@ -5,6 +5,10 @@ import org.bukkit.entity.Boat;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.EnderCrystal;
+import org.bukkit.entity.minecart.ExplosiveMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -15,7 +19,7 @@ import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
-import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
+import com.bekvon.bukkit.residence.protection.PvpProtection;
 import com.bekvon.bukkit.residence.utils.Utils;
 
 import io.papermc.paper.event.entity.EntityPushedByEntityAttackEvent;
@@ -28,6 +32,18 @@ public class ResidenceListener1_21_8_Paper implements Listener {
 
     public ResidenceListener1_21_8_Paper(Residence plugin) {
         this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onProjectileKnockback(org.bukkit.event.entity.EntityKnockbackByEntityEvent event) {
+        // Paper's later event can report only the player; this event retains the direct source.
+        Entity source = event.getSourceEntity();
+        if (!(event.getEntity() instanceof Player) || !(source instanceof Projectile || source instanceof TNTPrimed
+                || source instanceof EnderCrystal || source instanceof ExplosiveMinecart)
+                || plugin.isDisabledWorldListener(event.getEntity()))
+            return;
+        if (shouldCancelKnockBack(event.getEntity(), event.getSourceEntity()))
+            event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -53,8 +69,11 @@ public class ResidenceListener1_21_8_Paper implements Listener {
         if (target instanceof Player) {
             // Monster-on-player knockback doesn't need to check Flags.pvp
             // Allow players to knock themselves back (e.g., by Wind Charges)
-            if (player != null && !target.equals(player) && FlagPermissions.has(target.getLocation(), Flags.pvp, FlagCombo.OnlyFalse)) {
-                lm.Flag_Deny.sendMessage(player, Flags.pvp);
+            PvpProtection protection = new PvpProtection(Residence.getInstance());
+            player = protection.getPlayer(pushedBy);
+            if (protection.isDenied(pushedBy, player, (Player) target, true)) {
+                if (player != null)
+                    lm.Flag_Deny.sendMessage(player, Flags.pvp);
                 return true;
             }
             return false;

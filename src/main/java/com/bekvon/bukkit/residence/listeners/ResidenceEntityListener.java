@@ -3,9 +3,7 @@ package com.bekvon.bukkit.residence.listeners;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.UUID;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -57,9 +55,9 @@ import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.hanging.HangingBreakEvent.RemoveCause;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.metadata.MetadataValue;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.projectiles.ProjectileSource;
 
@@ -72,6 +70,7 @@ import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
+import com.bekvon.bukkit.residence.protection.PvpProtection;
 import com.bekvon.bukkit.residence.utils.Utils;
 
 import net.Zrips.CMILib.ActionBar.CMIActionBar;
@@ -84,12 +83,45 @@ import net.Zrips.CMILib.Version.Version;
 public class ResidenceEntityListener implements Listener {
 
     Residence plugin;
+    private final PvpProtection pvpProtection;
 
     public ResidenceEntityListener(Residence plugin) {
         this.plugin = plugin;
+        this.pvpProtection = new PvpProtection(plugin);
     }
 
     private final static String CrossbowShooter = "CrossbowShooter";
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onTntPvpSpawn(EntitySpawnEvent event) {
+        if (!(event.getEntity() instanceof TNTPrimed))
+            return;
+        Entity tnt = event.getEntity();
+        Block block = tnt.getLocation().getBlock();
+        if (!event.isCancelled()) {
+            pvpProtection.copyLaunch(block, tnt);
+            Player player = pvpProtection.getPlayer(tnt);
+            if (player != null)
+                pvpProtection.recordLaunch(tnt, player);
+        }
+        pvpProtection.clearLaunch(block);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCrystalPvpTrigger(EntityDamageByEntityEvent event) {
+        if (event.getEntity() instanceof EnderCrystal) {
+            pvpProtection.recordTrigger(event.getEntity(), pvpProtection.getDamageSource(event),
+                    pvpProtection.getDamagePlayer(event));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMinecartPvpTrigger(VehicleDamageEvent event) {
+        if (event.getVehicle() instanceof ExplosiveMinecart) {
+            pvpProtection.recordTrigger(event.getVehicle(), pvpProtection.getDamageSource(event),
+                    pvpProtection.getDamagePlayer(event));
+        }
+    }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEndermanTeleport(EntityTeleportEvent event) {
@@ -739,6 +771,19 @@ public class ResidenceEntityListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onProjectilePvpLaunch(ProjectileLaunchEvent event) {
+        Projectile projectile = event.getEntity();
+        if (projectile.getShooter() instanceof Player)
+            pvpProtection.recordLaunch(projectile, (Player) projectile.getShooter());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBowPvpLaunch(EntityShootBowEvent event) {
+        if (event.getEntity() instanceof Player)
+            pvpProtection.recordLaunch(event.getProjectile(), (Player) event.getEntity());
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onProjectileLaunch(ProjectileLaunchEvent event) {
         Projectile projectile = event.getEntity();
@@ -1219,6 +1264,7 @@ public class ResidenceEntityListener implements Listener {
 
         Entity ent = event.getEntity();
         boolean srcpvp = FlagPermissions.getPerms(ent.getLocation()).has(Flags.pvp, FlagCombo.TrueOrNone);
+        Player sourcePlayer = pvpProtection.getPlayer(ent);
         boolean animalKilling = FlagPermissions.getPerms(ent.getLocation()).has(Flags.animalkilling, FlagCombo.TrueOrNone);
         Iterator<LivingEntity> it = event.getAffectedEntities().iterator();
         boolean animalDamage = false;
@@ -1235,8 +1281,10 @@ public class ResidenceEntityListener implements Listener {
 
             if (target.getType() != EntityType.PLAYER)
                 continue;
+            if (target.hasMetadata("NPC") || (sourcePlayer != null && sourcePlayer.hasMetadata("NPC")))
+                continue;
             Boolean tgtpvp = FlagPermissions.getPerms(target.getLocation()).has(Flags.pvp, FlagCombo.TrueOrNone);
-            if (!srcpvp || !tgtpvp) {
+            if (!srcpvp || !tgtpvp || pvpProtection.isDenied(ent, sourcePlayer, (Player) target, false)) {
                 event.setIntensity(target, 0);
                 continue;
             }
@@ -1271,27 +1319,13 @@ public class ResidenceEntityListener implements Listener {
         if (!(entity instanceof Player))
             return;
 
-        ClaimedResidence res = plugin.getResidenceManager().getByLoc(entity.getLocation());
-
-        if (res == null)
-            return;
-
         Entity damager = event.getCombuster();
 
         if (!damageableProjectile(damager) && !(damager instanceof Player))
             return;
 
-        if (damageableProjectile(damager) && !(((Projectile) damager).getShooter() instanceof Player))
-            return;
-
-        Player cause = Utils.potentialProjectileToPlayer(damager);
-
-        if (cause == null)
-            return;
-
-        boolean srcpvp = FlagPermissions.has(cause.getLocation(), Flags.pvp, FlagCombo.TrueOrNone);
-        boolean tgtpvp = FlagPermissions.has(entity.getLocation(), Flags.pvp, FlagCombo.TrueOrNone);
-        if (!srcpvp || !tgtpvp)
+        Player cause = pvpProtection.getPlayer(damager);
+        if (pvpProtection.isDenied(damager, cause, (Player) entity, false))
             event.setCancelled(true);
     }
 
@@ -1330,6 +1364,16 @@ public class ResidenceEntityListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerDamageByPlayer(EntityDamageByEntityEvent event) {
+        handlePlayerDamage(event);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPlayerDamageByIndirectPlayer(EntityDamageEvent event) {
+        if (!(event instanceof EntityDamageByEntityEvent))
+            handlePlayerDamage(event);
+    }
+
+    private void handlePlayerDamage(EntityDamageEvent event) {
         Entity victim = event.getEntity();
         // disabling event on world
         if (plugin.isDisabledWorldListener(victim)) {
@@ -1338,44 +1382,14 @@ public class ResidenceEntityListener implements Listener {
         if (!(victim instanceof Player) || victim.hasMetadata("NPC")) {
             return;
         }
-        Entity attacker = event.getDamager();
-        Player attackerPlayer = null;
-        boolean isOnFire = false;
-
-        if (attacker instanceof Player) {
-            attackerPlayer = (Player) attacker;
-
-            // issues https://github.com/Zrips/Residence/issues/466
-            // Not sure when Paper stopped needing this, so to be safe, we'll only skip it for Paper 1.21+
-            // https://github.com/PaperMC/Paper/pull/10307
-            // In higher versions, Firework also belongs to Projectile, and the shooter can be obtained normall
-        } else if (attacker instanceof Firework && (!Version.isPaperBranch() || Version.isCurrentLower(Version.v1_21_0))) {
-            List<MetadataValue> meta = attacker.getMetadata(CrossbowShooter);
-            if (meta != null && !meta.isEmpty()) {
-                try {
-                    String uid = meta.get(0).asString();
-                    attackerPlayer = Bukkit.getPlayer(UUID.fromString(uid));
-                } catch (Throwable e) {
-                }
-            }
-
-        } else if (attacker instanceof Projectile) {
-            Projectile project = (Projectile) attacker;
-            ProjectileSource shooter = project.getShooter();
-            if (!(shooter instanceof Player)) {
-                return;
-            }
-            attackerPlayer = (Player) shooter;
-            if (project.getFireTicks() > 0) {
-                isOnFire = true;
-            }
-
-        }
-        if (attackerPlayer == null || attackerPlayer.hasMetadata("NPC")) {
+        Entity attacker = pvpProtection.getDamageSource(event);
+        Player attackerPlayer = pvpProtection.getDamagePlayer(event);
+        boolean isOnFire = attacker instanceof Projectile && attacker.getFireTicks() > 0;
+        if (!pvpProtection.hasPlayerSource(attacker, attackerPlayer)
+                || (attackerPlayer != null && attackerPlayer.hasMetadata("NPC"))) {
             return;
         }
-        // Now both the attacker and the victim are guaranteed to be players
-        ClaimedResidence attackerRes = ClaimedResidence.getByLoc(attacker.getLocation());
+        ClaimedResidence attackerRes = attackerPlayer == null ? null : ClaimedResidence.getByLoc(attackerPlayer.getLocation());
         ClaimedResidence victimRes = ClaimedResidence.getByLoc(victim.getLocation());
         // Attacker and victim are in the same Residence
         if (attackerRes != null && victimRes != null && attackerRes.equals(victimRes)) {
@@ -1386,11 +1400,11 @@ public class ResidenceEntityListener implements Listener {
                     event.setCancelled(true);
                     return;
                 }
-                if (!raidSameTeam) {
+                if (!raidSameTeam && !pvpProtection.isLaunchDeniedOutside(attacker, victimRes)) {
                     return;
                 }
             }
-            if (attackerRes.getPermissions().has(Flags.pvp, FlagCombo.OnlyFalse)) {
+            if (pvpProtection.isDenied(attacker, attackerPlayer, (Player) victim, false)) {
                 process(lm.General_NoPVPZone, attackerPlayer, isOnFire, victim, event);
                 return;
             }
@@ -1404,23 +1418,13 @@ public class ResidenceEntityListener implements Listener {
             }
             // Attacker and victim are not in the same Residence
         } else {
-            // if PVP disabled at attacker location, cancel event
-            if (attackerRes != null && attackerRes.getPermissions().has(Flags.pvp, FlagCombo.OnlyFalse)) {
-                process(lm.General_NoPVPZone, attackerPlayer, isOnFire, victim, event);
+            // Check the launch snapshot and both players, not the projectile's impact location.
+            if (pvpProtection.isDenied(attacker, attackerPlayer, (Player) victim, false)) {
+                lm message = attackerRes == null && victimRes == null
+                        && plugin.getWorldFlags().getPerms(victim.getWorld().getName()).has(Flags.pvp, FlagCombo.OnlyFalse)
+                        ? lm.General_WorldPVPDisabled : lm.General_NoPVPZone;
+                process(message, attackerPlayer, isOnFire, victim, event);
                 return;
-            }
-            // if PVP disabled at victim location, cancel event
-            if (victimRes != null && victimRes.getPermissions().has(Flags.pvp, FlagCombo.OnlyFalse)) {
-                process(lm.General_NoPVPZone, attackerPlayer, isOnFire, victim, event);
-                return;
-            }
-            // Now attacker and victim are not in Residence
-            if (attackerRes == null && victimRes == null) {
-                /* World PvP */
-                if (plugin.getWorldFlags().getPerms(attackerPlayer.getWorld()).has(Flags.pvp, FlagCombo.OnlyFalse)) {
-                    process(lm.General_WorldPVPDisabled, attackerPlayer, isOnFire, victim, event);
-                    return;
-                }
             }
         }
     }
