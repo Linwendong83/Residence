@@ -285,7 +285,7 @@ jobs:
           git push --force origin "refs/tags/$VERSION"
 
           if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release edit "$VERSION" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md
+            # Rebuild the existing version without changing its title or release notes.
             gh release upload "$VERSION" "$JAR" --repo "$GH_REPO" --clobber
           else
             gh release create "$VERSION" "$JAR" --repo "$GH_REPO" --title "$VERSION" --notes-file .release/release-notes.md

@@ -67,6 +67,7 @@ import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
+import com.bekvon.bukkit.residence.protection.ArrowHitResync;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
@@ -84,10 +85,12 @@ public class ResidenceEntityListener implements Listener {
 
     Residence plugin;
     private final PvpProtection pvpProtection;
+    private final ArrowHitResync arrowHitResync;
 
     public ResidenceEntityListener(Residence plugin) {
         this.plugin = plugin;
         this.pvpProtection = new PvpProtection(plugin);
+        this.arrowHitResync = new ArrowHitResync(plugin);
     }
 
     private final static String CrossbowShooter = "CrossbowShooter";
@@ -1365,12 +1368,17 @@ public class ResidenceEntityListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerDamageByPlayer(EntityDamageByEntityEvent event) {
         handlePlayerDamage(event);
+        if (event.isCancelled())
+            arrowHitResync.afterCancelledDamage(event, pvpProtection.getDamageSource(event));
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerDamageByIndirectPlayer(EntityDamageEvent event) {
-        if (!(event instanceof EntityDamageByEntityEvent))
+        if (!(event instanceof EntityDamageByEntityEvent)) {
             handlePlayerDamage(event);
+            if (event.isCancelled())
+                arrowHitResync.afterCancelledDamage(event, pvpProtection.getDamageSource(event));
+        }
     }
 
     private void handlePlayerDamage(EntityDamageEvent event) {

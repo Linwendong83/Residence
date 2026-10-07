@@ -105,6 +105,8 @@ public class PvpProtectionTest {
     private Player target;
     private PvpProtection protection;
     private ResidenceEntityListener entities;
+    private final List<Runnable> arrowResyncTasks = new ArrayList<>();
+    private final List<Entity> resyncedArrows = new ArrayList<>();
     private final Map<UUID, Player> online = new HashMap<>();
     private Object oldPlugin;
     private Object oldVersion;
@@ -175,6 +177,11 @@ public class PvpProtectionTest {
         target = player(10);
         protection = new PvpProtection(plugin);
         entities = new ResidenceEntityListener(plugin);
+        arrowResyncTasks.clear();
+        resyncedArrows.clear();
+        Field resyncField = ResidenceEntityListener.class.getDeclaredField("arrowHitResync");
+        resyncField.setAccessible(true);
+        resyncField.set(entities, new ArrowHitResync((arrow, task) -> arrowResyncTasks.add(task), resyncedArrows::add));
     }
 
     @After
@@ -191,6 +198,55 @@ public class PvpProtectionTest {
     @Test
     public void blocksOutgoingArrowEvenThoughImpactIsOutside() {
         assertDamageDenied(projectile(Arrow.class), true);
+    }
+
+    @Test
+    public void resynchronizesTheArrowAfterDenyingACrossBoundaryHit() {
+        Arrow arrow = projectile(Arrow.class);
+        when(arrow.isValid()).thenReturn(true);
+        EntityDamageByEntityEvent event = statefulArrowDamage(arrow);
+        entities.onPlayerDamageByPlayer(event);
+        assertTrue(event.isCancelled());
+        assertEquals(1, arrowResyncTasks.size());
+        assertTrue(resyncedArrows.isEmpty());
+        arrowResyncTasks.get(0).run();
+        assertSame(arrow, resyncedArrows.get(0));
+    }
+
+    @Test
+    public void doesNotResynchronizeAllowedPvp() {
+        move(shooter, 10);
+        EntityDamageByEntityEvent event = statefulArrowDamage(projectile(Arrow.class));
+        entities.onPlayerDamageByPlayer(event);
+        assertFalse(event.isCancelled());
+        assertTrue(arrowResyncTasks.isEmpty());
+    }
+
+    @Test
+    public void alsoResynchronizesRejectedRaidFriendlyFire() {
+        move(target, -5);
+        homeFlags.cuboidFlags.put("pvp", true);
+        ResidenceRaid raid = raid(home);
+        when(raid.onSameTeam(shooter, target)).thenReturn(true);
+        Arrow arrow = projectile(Arrow.class);
+        when(arrow.isValid()).thenReturn(true);
+        EntityDamageByEntityEvent event = statefulArrowDamage(arrow);
+        entities.onPlayerDamageByPlayer(event);
+        assertTrue(event.isCancelled());
+        assertEquals(1, arrowResyncTasks.size());
+        arrowResyncTasks.get(0).run();
+        assertSame(arrow, resyncedArrows.get(0));
+    }
+
+    private EntityDamageByEntityEvent statefulArrowDamage(Arrow arrow) {
+        EntityDamageByEntityEvent event = damage(arrow, target, source(arrow, shooter));
+        boolean[] cancelled = { false };
+        when(event.isCancelled()).thenAnswer(call -> cancelled[0]);
+        doAnswer(call -> {
+            cancelled[0] = call.getArgument(0);
+            return null;
+        }).when(event).setCancelled(anyBoolean());
+        return event;
     }
 
     @Test
