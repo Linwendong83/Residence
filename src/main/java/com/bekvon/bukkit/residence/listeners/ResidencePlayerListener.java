@@ -2329,11 +2329,10 @@ public class ResidencePlayerListener implements Listener {
         if (!cantMove)
             tempData.setCurrentResidence(player, res);
 
-        boolean teleported = false;
         if (!cantMove && Flags.nofly.isGlobalyEnabled() && player.isFlying() && res.getPermissions().playerHas(player, Flags.nofly, FlagCombo.OnlyTrue) && !ResAdmin.isResAdmin(player)
                 && !res.isOwner(player) && !ResPerm.bypass_nofly.hasPermission(player, 10000L)) {
 
-            teleported = checkNoFly(player, res, loc);
+            checkNoFly(player, res, loc);
         }
 
         if (move && cantMove) {
@@ -2343,7 +2342,7 @@ public class ResidencePlayerListener implements Listener {
 
             StuckInfo info = updateStuckTeleport(player, loc);
 
-            // Rapid deny loops (velocity blocked or ignored) fall back to the teleport below
+            // If bouncing is unavailable or repeatedly fails, find an outside destination.
             if ((info == null || info.getTimesTeleported() <= 12) && tryBounce(player, res, from, loc)) {
                 bounceAnimation(player, res);
                 String resName = res.getName();
@@ -2351,54 +2350,14 @@ public class ResidencePlayerListener implements Listener {
                 return false;
             }
 
-            Location lastLoc = tempData.getLastValidLocation(player);
-
-            if (lastLoc == null) {
-                bounceAnimation(player, res);
-                res.kickFromResidence(player);
-                player.closeInventory();
-                informOnMoveDeny(player, res);
-                return false;
-            }
-
             bounceAnimation(player, res);
-            ClaimedResidence preRes = plugin.getResidenceManager().getByLoc(lastLoc);
-
-            boolean cannotTeleportToLast = preRes != null && Flags.tp.isGlobalyEnabled() &&
-                    preRes.getPermissions().playerHas(player, Flags.tp, FlagCombo.OnlyFalse) &&
-                    !ResPerm.admin_tp.hasPermission(player, 10000L);
-            boolean cannotMoveToLast = preRes != null && Flags.move.isGlobalyEnabled() &&
-                    preRes.getPermissions().playerHas(player, Flags.move, FlagCombo.OnlyFalse) &&
-                    !ResAdmin.isResAdmin(player) && !preRes.isOwner(player) &&
-                    !ResPerm.admin_move.hasPermission(player, 10000L);
-
-            if (cannotTeleportToLast || cannotMoveToLast) {
-                res.kickFromResidence(player);
-                player.closeInventory();
-                informOnMoveDeny(player, res);
-                return false;
-            }
-
             player.closeInventory();
 
             if (player.getVehicle() != null)
                 player.leaveVehicle();
 
-            if (info != null && info.getTimesTeleported() > 12) {
-                res.kickFromResidence(player);
-                return false;
-            }
-
-            if (!teleported) {
-                Teleporting.teleport(player, lastLoc).thenAccept(success -> {
-                    if (!success)
-                        res.kickFromResidence(player);
-                });
-            }
-
-            String name = res.getName();
-            CMIScheduler.runTaskAsynchronously(plugin, () -> lm.Residence_MoveDeny.sendMessage(player, name));
-
+            res.kickFromResidence(player);
+            informOnMoveDeny(player, res);
             return false;
         }
 

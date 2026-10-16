@@ -30,8 +30,8 @@ import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
-import com.bekvon.bukkit.residence.utils.NearestOutsideChunkIterator.BlockBounds;
-import com.bekvon.bukkit.residence.utils.NearestOutsideChunkIterator.ChunkCandidate;
+import com.bekvon.bukkit.residence.utils.NearestChunkIterator.BlockBounds;
+import com.bekvon.bukkit.residence.utils.NearestChunkIterator.ChunkCandidate;
 
 import net.Zrips.CMILib.Container.CMIWorld;
 import net.Zrips.CMILib.Items.CMIMC;
@@ -142,7 +142,8 @@ public class LocationUtil {
     }
 
     public static CompletableFuture<Location> getOutsideFreeLocASYNC(ClaimedResidence res, Location insideLoc, Player player, boolean toSpawnOnFail) {
-        return CompletableFuture.supplyAsync(() -> getOutsideFreeLoc(res, insideLoc, player, toSpawnOnFail));
+        Location source = insideLoc == null ? null : insideLoc.clone();
+        return CompletableFuture.supplyAsync(() -> getOutsideFreeLoc(res, source, player, toSpawnOnFail));
     }
 
     private static Location getNearestOutsideLocation(Player player, Location source, CuboidArea area) {
@@ -150,14 +151,15 @@ public class LocationUtil {
         if (world == null || source == null || source.getWorld() == null || !world.equals(source.getWorld()))
             return null;
 
+        BlockBounds bounds = getWorldBorderBounds(world.getWorldBorder());
+        int minimumY = CMIWorld.getMinHeight(world);
         Vector low = area.getLowVector();
         Vector high = area.getHighVector();
-        BlockBounds bounds = getWorldBorderBounds(world.getWorldBorder());
-        NearestOutsideChunkIterator chunks = new NearestOutsideChunkIterator(
-                source.getX(), source.getZ(),
-                low.getBlockX(), high.getBlockX(), low.getBlockZ(), high.getBlockZ(), bounds);
+        BlockBounds excludedColumns = low.getBlockY() <= minimumY + 1 && high.getBlockY() >= world.getMaxHeight() - 2
+                ? new BlockBounds(low.getBlockX(), high.getBlockX(), low.getBlockZ(), high.getBlockZ()) : null;
+        NearestChunkIterator chunks = new NearestChunkIterator(source.getX(), source.getZ(), bounds, excludedColumns);
 
-        SafeColumn best = null;
+        SafeLocation best = null;
         while (chunks.hasNext()) {
             ChunkCandidate chunkCandidate = chunks.next();
             if (best != null && chunkCandidate.getMinimumDistanceSquared() >= best.distanceSquared)
@@ -167,9 +169,10 @@ public class LocationUtil {
             if (cmiSnapshot == null || cmiSnapshot.getSnapshot() == null)
                 return null;
 
-            List<SafeColumn> candidates = getSafeColumns(
-                    cmiSnapshot.getSnapshot(), world, chunks, chunkCandidate, best == null ? Double.POSITIVE_INFINITY : best.distanceSquared);
-            SafeColumn allowed = getFirstAllowedColumn(player, candidates);
+            List<SafeLocation> candidates = getSafeLocations(
+                    cmiSnapshot.getSnapshot(), source, area, chunks, chunkCandidate,
+                    minimumY, best == null ? Double.POSITIVE_INFINITY : best.distanceSquared);
+            SafeLocation allowed = getFirstAllowedLocation(player, candidates);
             if (allowed != null && (best == null || allowed.distanceSquared < best.distanceSquared))
                 best = allowed;
         }
@@ -177,10 +180,14 @@ public class LocationUtil {
         return best == null ? null : best.location;
     }
 
-    private static List<SafeColumn> getSafeColumns(ChunkSnapshot snapshot, World world,
-            NearestOutsideChunkIterator chunks, ChunkCandidate chunkCandidate, double maximumDistanceSquared) {
-        List<SafeColumn> candidates = new ArrayList<>();
+    static List<SafeLocation> getSafeLocations(ChunkSnapshot snapshot, Location source, CuboidArea area,
+            NearestChunkIterator chunks, ChunkCandidate chunkCandidate, int minimumY, double maximumDistanceSquared) {
+        List<SafeLocation> candidates = new ArrayList<>();
+        World world = source.getWorld();
         BlockBounds bounds = chunks.getBounds();
+        int maximumY = world.getMaxHeight();
+        Vector low = area.getLowVector();
+        Vector high = area.getHighVector();
 
         int minX = Math.max(bounds.minX, chunkCandidate.getChunkX() * 16);
         int maxX = Math.min(bounds.maxX, chunkCandidate.getChunkX() * 16 + 15);
@@ -189,55 +196,65 @@ public class LocationUtil {
 
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
-                if (!chunks.isOutsideArea(x, z))
+                double horizontalDistanceSquared = chunks.distanceSquared(x, z);
+                if (horizontalDistanceSquared >= maximumDistanceSquared)
                     continue;
 
-                double distanceSquared = chunks.distanceSquared(x, z);
-                if (distanceSquared >= maximumDistanceSquared)
-                    continue;
+                int localX = x & 0xF;
+                int localZ = z & 0xF;
+                boolean outsideHorizontalBounds = x < low.getBlockX() || x > high.getBlockX()
+                        || z < low.getBlockZ() || z > high.getBlockZ();
+                int lowestSupportY = minimumY;
+                int highestSupportY = Math.min(snapshot.getHighestBlockYAt(localX, localZ), maximumY - 3);
+                if (Double.isFinite(maximumDistanceSquared)) {
+                    double verticalReach = Math.sqrt(maximumDistanceSquared - horizontalDistanceSquared);
+                    lowestSupportY = Math.max(lowestSupportY, (int) Math.ceil(source.getY() - verticalReach) - 1);
+                    highestSupportY = Math.min(highestSupportY, (int) Math.floor(source.getY() + verticalReach) - 1);
+                }
 
-                Location safeLocation = getSpawnLikeLocation(snapshot, world, x, z);
-                if (safeLocation != null)
-                    candidates.add(new SafeColumn(safeLocation, distanceSquared));
+                // Check every supported height, including caves and floors above/below the area.
+                for (int supportY = highestSupportY; supportY >= lowestSupportY; supportY--) {
+                    int feetY = supportY + 1;
+                    double dy = feetY - source.getY();
+                    double distanceSquared = horizontalDistanceSquared + dy * dy;
+                    if (distanceSquared >= maximumDistanceSquared)
+                        continue;
+
+                    if (!outsideHorizontalBounds && feetY >= low.getBlockY() && feetY <= high.getBlockY())
+                        continue;
+                    Material supportMaterial = snapshot.getBlockType(localX, supportY, localZ);
+                    BlockData supportData = snapshot.getBlockData(localX, supportY, localZ);
+                    if (!isSafeSupport(supportMaterial, supportData))
+                        continue;
+                    if (!isSnapshotBodyClear(snapshot, localX, feetY, localZ))
+                        continue;
+                    candidates.add(new SafeLocation(new Location(world, x + 0.5D, feetY, z + 0.5D), distanceSquared));
+                }
             }
         }
 
         candidates.sort(Comparator
-                .comparingDouble((SafeColumn candidate) -> candidate.distanceSquared)
+                .comparingDouble((SafeLocation candidate) -> candidate.distanceSquared)
                 .thenComparingInt(candidate -> candidate.location.getBlockX())
+                .thenComparingInt(candidate -> candidate.location.getBlockY())
                 .thenComparingInt(candidate -> candidate.location.getBlockZ()));
         return candidates;
     }
 
-    private static Location getSpawnLikeLocation(ChunkSnapshot snapshot, World world, int blockX, int blockZ) {
-        int localX = blockX & 0xF;
-        int localZ = blockZ & 0xF;
-        int minimumY = CMIWorld.getMinHeight(world);
-        int maximumY = world.getMaxHeight();
-        int highestY = Math.min(snapshot.getHighestBlockYAt(localX, localZ), maximumY - 1);
-
-        for (int supportY = highestY; supportY >= minimumY; supportY--) {
-            Material supportMaterial = snapshot.getBlockType(localX, supportY, localZ);
-            BlockData supportData = snapshot.getBlockData(localX, supportY, localZ);
-
-            // Vanilla's overworld spawn lookup abandons a column when it meets fluid.
-            if (isLiquid(supportMaterial, supportData))
-                return null;
-            if (!isSafeSupport(supportMaterial, supportData))
-                continue;
-
-            int feetY = supportY + 1;
-            if (feetY + 1 >= maximumY)
-                continue;
-            return new Location(world, blockX + 0.5D, feetY, blockZ + 0.5D);
+    private static boolean isSnapshotBodyClear(ChunkSnapshot snapshot, int localX, int feetY, int localZ) {
+        for (int y = feetY; y <= feetY + 1; y++) {
+            Material material = snapshot.getBlockType(localX, y, localZ);
+            BlockData data = snapshot.getBlockData(localX, y, localZ);
+            if (isLiquid(material, data) || isDamaging(material) || data.isOccluding())
+                return false;
         }
-        return null;
+        // Partial collision shapes are checked against the live blocks before teleporting.
+        return true;
     }
 
     private static boolean isSafeSupport(Material material, BlockData data) {
-        if (isDamaging(material) || isLiquid(material, data))
-            return false;
-        return data.isFaceSturdy(BlockFace.UP, BlockSupport.FULL);
+        return data.isFaceSturdy(BlockFace.UP, BlockSupport.FULL)
+                && !isDamaging(material) && !isLiquid(material, data);
     }
 
     private static boolean isLiquid(Material material, BlockData data) {
@@ -249,18 +266,18 @@ public class LocationUtil {
         return CMIMaterial.get(material).containsCriteria(CMIMC.DAMAGECAUSING);
     }
 
-    private static SafeColumn getFirstAllowedColumn(Player player, List<SafeColumn> candidates) {
+    private static SafeLocation getFirstAllowedLocation(Player player, List<SafeLocation> candidates) {
         if (candidates.isEmpty())
             return null;
 
-        SafeColumn[] allowed = new SafeColumn[1];
+        SafeLocation[] allowed = new SafeLocation[1];
         CMIScheduler.runAtLocation(Residence.getInstance(), candidates.get(0).location, () -> {
             boolean residenceAdmin = player != null && ResAdmin.isResAdmin(player);
             boolean bypassTp = player != null && ResPerm.bypass_tp.hasPermission(player);
             boolean adminTp = player != null && ResPerm.admin_tp.hasPermission(player);
             boolean adminMove = player != null && ResPerm.admin_move.hasPermission(player);
 
-            for (SafeColumn candidate : candidates) {
+            for (SafeLocation candidate : candidates) {
                 if (!isSafeLiveLocation(candidate.location))
                     continue;
 
@@ -334,11 +351,11 @@ public class LocationUtil {
                 (int) Math.ceil(maximumZ - 0.5D) - 1);
     }
 
-    private static final class SafeColumn {
-        private final Location location;
-        private final double distanceSquared;
+    static final class SafeLocation {
+        final Location location;
+        final double distanceSquared;
 
-        private SafeColumn(Location location, double distanceSquared) {
+        private SafeLocation(Location location, double distanceSquared) {
             this.location = location;
             this.distanceSquared = distanceSquared;
         }
