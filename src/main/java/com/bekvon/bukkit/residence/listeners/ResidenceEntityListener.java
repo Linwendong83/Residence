@@ -69,6 +69,7 @@ import com.bekvon.bukkit.residence.containers.Flags;
 import com.bekvon.bukkit.residence.containers.ResAdmin;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
+import com.bekvon.bukkit.residence.protection.ArrowHitResync;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
@@ -87,9 +88,11 @@ import org.jetbrains.annotations.Nullable;
 public class ResidenceEntityListener implements Listener {
 
     private final Residence plugin;
+    private final ArrowHitResync arrowHitResync;
 
     public ResidenceEntityListener(Residence plugin) {
         this.plugin = plugin;
+        this.arrowHitResync = new ArrowHitResync(plugin);
     }
 
     private final static String CrossbowShooter = "CrossbowShooter";
@@ -1324,6 +1327,12 @@ public class ResidenceEntityListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerDamageByPlayer(EntityDamageByEntityEvent event) {
+        handlePlayerDamage(event);
+        if (event.isCancelled())
+            arrowHitResync.afterCancelledDamage(event, event.getDamager());
+    }
+
+    private void handlePlayerDamage(EntityDamageByEntityEvent event) {
         Entity victim = event.getEntity();
         // disabling event on world
         if (plugin.isDisabledWorldListener(victim)) {
