@@ -14,6 +14,7 @@ import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.permissions.PermissionManager.ResPerm;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
+import com.bekvon.bukkit.residence.selection.SelectionManager;
 
 import net.Zrips.CMILib.Container.CMINumber;
 import net.Zrips.CMILib.FileHandler.ConfigReader;
@@ -30,6 +31,7 @@ public class contract implements cmd {
         Player player = (Player) sender;
         ClaimedResidence res = null;
         int amount = -1;
+
         Location loc = player.getLocation();
 
         for (String one : args) {
@@ -61,6 +63,11 @@ public class contract implements cmd {
             return true;
         }
 
+        if (!resadmin && !res.isOwner(player)) {
+            lm.Residence_NotOwner.sendMessage(sender);
+            return true;
+        }
+
         if (res.isSubzone() && !resadmin && !ResPerm.command_contract_subzone.hasPermission(player, lm.Subzone_CantContract))
             return true;
 
@@ -87,6 +94,10 @@ public class contract implements cmd {
             return true;
 
         if (plugin.getSelectionManager().hasPlacedBoth(player)) {
+            if (plugin.getWorldEdit() != null && plugin.getWorldEditTool().equals(SelectionManager.getTool())) {
+                plugin.getSelectionManager().worldEdit(player);
+            }
+
             res.replaceArea(player, plugin.getSelectionManager().getSelectionCuboid(player), areaName, resadmin);
             return true;
         }

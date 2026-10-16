@@ -8,6 +8,7 @@ import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,8 +35,10 @@ import com.bekvon.bukkit.residence.containers.GenMessageType;
 import com.bekvon.bukkit.residence.containers.RandomTeleport;
 import com.bekvon.bukkit.residence.containers.lm;
 import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache;
+import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache_Legacy;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagState;
+import com.bekvon.bukkit.residence.selection.SelectionManager;
 import com.bekvon.bukkit.residence.selection.VisualizerConfig;
 
 import net.Zrips.CMILib.CMILib;
@@ -71,19 +74,18 @@ public class ConfigManager {
     protected boolean LwcOnDelete = false;
     protected boolean LwcOnBuy = false;
     protected boolean LwcOnUnrent = false;
-    protected List<Material> LwcMatList = new ArrayList<Material>();
+    protected Set<Material> LwcMatList = EnumSet.noneOf(Material.class);
     protected boolean UseClean = false;
     protected boolean PvPFlagPrevent;
 
     protected boolean BlockAnyTeleportation;
-    protected CMIMaterial infoTool;
+
     protected int AutoCleanUpDays;
     protected boolean AutoCleanDetailsOnUnknown;
     protected boolean AutoCleanUpRegenerate;
     protected boolean CanTeleportIncludeOwner;
     private boolean LoadEveryWorld;
     public boolean CleanerStartupLog;
-    protected CMIMaterial selectionTool;
     protected boolean adminOps;
     protected boolean AdminFullAccess;
     protected String multiworldPlugin;
@@ -193,11 +195,6 @@ public class ConfigManager {
     protected boolean enableDebug = false;
     protected boolean versionCheck = true;
 
-    protected boolean SelectionIgnoreY = false;
-    protected boolean SelectionIgnoreYInSubzone = false;
-    private int SelectionNetherHeight = 128;
-    protected boolean NoCostForYBlocks = false;
-    protected boolean WorldEditIntegration = false;
     protected boolean DisabledWorld;
     protected boolean DisableListeners;
     protected boolean DisableCommands;
@@ -218,22 +215,22 @@ public class ConfigManager {
     protected boolean CreeperExplodeBelow;
     protected int CreeperExplodeBelowLevel;
 
-    protected List<Material> customContainers = new ArrayList<Material>();
-    protected List<Material> customBothClick = new ArrayList<Material>();
-    protected List<Material> customRightClick = new ArrayList<Material>();
-    protected List<Material> CleanBlocks = new ArrayList<Material>();
+    protected Set<Material> customContainers = EnumSet.noneOf(Material.class);
+    protected Set<Material> customBothClick = EnumSet.noneOf(Material.class);
+    protected Set<Material> customRightClick = EnumSet.noneOf(Material.class);
+    protected Set<Material> CleanBlocks = EnumSet.noneOf(Material.class);
 
     protected List<String> NoFlowWorlds;
     protected List<String> AutoCleanUpWorlds;
-    
+
     private boolean AutoCleanTrasnferToUser;
     private String AutoCleanUserName;
     protected List<String> NoPlaceWorlds;
     protected List<String> BlockFallWorlds;
     protected List<String> CleanWorlds;
     protected List<String> FlagsList;
-    protected List<String> NegativePotionEffects;
-    protected List<String> NegativeLingeringPotionEffects;
+    protected List<String> NegativePotionEffects = new ArrayList<String>();
+    protected List<String> NegativeLingeringPotionEffects = new ArrayList<String>();
     private double WalkSpeed1;
     private double WalkSpeed2;
     private int SignsMaxPerResidence;
@@ -598,33 +595,9 @@ public class ConfigManager {
                 "All Residence text comes from this file. (NOT DONE YET)");
         language = c.get("Global.Language", "English");
 
-        c.addComment("Global.SelectionToolId", "Wooden Hoe is the default selection tool for Residence.");
-        selectionTool = CMIMaterial.get(c.get("Global.SelectionToolId", CMIMaterial.WOODEN_HOE.name()));
+        SelectionManager.loadConfig(c);
+        VisualizerConfig.loadConfig(c);
 
-        c.addComment("Global.Selection.IgnoreY", "By setting this to true, all selections will be made from bedrock to sky ignoring Y coordinates");
-        SelectionIgnoreY = c.get("Global.Selection.IgnoreY", false);
-
-        c.addComment("Global.Selection.IgnoreYInSubzone",
-                "When this set to true, selections inside existing residence will be from bottom to top of that residence",
-                "When this set to false, selections inside existing residence will be exactly as they are");
-        SelectionIgnoreYInSubzone = c.get("Global.Selection.IgnoreYInSubzone", false);
-
-        c.addComment("Global.Selection.netherHeight",
-                "Defines height of nether when creating residences. This mostly applies when performing commands like /res select vert or /res auto which will expand residence to defined height",
-                "This cant be higher than 319 or lower than 1");
-        SelectionNetherHeight = c.get("Global.Selection.netherHeight", 128);
-        SelectionNetherHeight = SelectionNetherHeight > 319 ? 319 : SelectionNetherHeight < 1 ? 1 : SelectionNetherHeight;
-
-        c.addComment("Global.Selection.NoCostForYBlocks", "By setting this to true, player will only pay for x*z blocks ignoring height",
-                "This will lower residence price by up to 319 times, so adjust block price BEFORE enabling this");
-        NoCostForYBlocks = c.get("Global.Selection.NoCostForYBlocks", false);
-
-        c.addComment("Global.Selection.WorldEditIntegration", "Enable or disable world edit integration into Residence plugin");
-        WorldEditIntegration = c.get("Global.Selection.WorldEditIntegration", true);
-
-        c.addComment("Global.InfoToolId", "This determins which tool you can use to see info on residences, default is String.",
-                "Simply equip this tool and hit a location inside the residence and it will display the info for it.");
-        infoTool = CMIMaterial.get(c.get("Global.InfoToolId", Material.STRING.toString()));
 
         c.addComment("Global.Optimizations.LoadEveryWorld", "When enabled we will load data from every single world file even if world doesn't exist but might be loaded later on",
                 "Usually only useful when you have multiverse plugin which loads worlds durring server work time");
@@ -804,15 +777,6 @@ public class ConfigManager {
         HealInterval = c.get("Global.Optimizations.Intervals.Heal", 1);
         FeedInterval = c.get("Global.Optimizations.Intervals.Feed", 5);
         SafeZoneInterval = c.get("Global.Optimizations.Intervals.SafeZone", 3);
-
-        // negative potion effect list
-        c.addComment("Global.Optimizations.NegativePotionEffects",
-                "Potions containing one of thos effects will be ignored if residence don't have pvp true flag set");
-        NegativePotionEffects = c.get("Global.Optimizations.NegativePotionEffects", Arrays.asList("blindness", "confusion", "harm", "hunger", "poison", "slow",
-                "slow_digging", "weakness", "wither"));
-
-        NegativeLingeringPotionEffects = c.get("Global.Optimizations.NegativeLingeringPotions", Arrays.asList("slowness", "instant_damage", "poison",
-                "slowness"));
 
         c.addComment("Global.Optimizations.WalkSpeed",
                 "Defines speed for particular wspeed1 and wspeed2 flags. It can be from 0 up to 5");
@@ -1209,11 +1173,15 @@ public class ConfigManager {
         MessageType = new ArrayList<>(c.get("Global.Messages.MessageType", Arrays.asList("Flag_Deny", "Residence_FlagDeny", "General_NoPVPZone")));
 
         c.addComment("Global.Messages.FlagDenyMessageCooldown", "Cooldown for sending duplicate Flag deny messages, in seconds(default: 1)",
-                "Only effective for 1.16+ versions; suppresses spam from repeated Flag deny messages");
+                "suppresses spam from repeated Flag deny messages");
         FlagDenyMessageCooldown = (c.get("Global.Messages.FlagDenyMessageCooldown", 1));
 
-        if (Version.isCurrentEqualOrHigher(Version.v1_16_0) && FlagDenyMessageCooldown > 0) {
-            DenyMessageCache.reloadDenyMessageCache(FlagDenyMessageCooldown);
+        if (FlagDenyMessageCooldown > 0) {
+            if (Version.isCurrentEqualOrHigher(Version.v1_16_0)) {
+                DenyMessageCache.reloadDenyMessageCache(FlagDenyMessageCooldown);
+            } else {
+                DenyMessageCache_Legacy.reloadDenyMessageCache(FlagDenyMessageCooldown);
+            }
         }
 
         ActionBarOnSelection = c.get("Global.ActionBar.ShowOnSelection", true);
@@ -1256,7 +1224,8 @@ public class ConfigManager {
         flagsInherit = c.get("Global.ResidenceFlagsInherit", true);
 
         c.addComment("Global.PreventRentModify", "Setting this to false will allow rented residences to be modified by the renting player.");
-        // Keep it at false, so that rented areas permissions can be modified with flags by default
+        // Keep it at false, so that rented areas permissions can be modified with flags
+        // by default
         preventBuildInRent = c.get("Global.PreventRentModify", false);
 
         c.addComment("Global.PreventSubZoneRemoval", "Setting this to true will prevent subzone deletion when subzone owner is not same as parent zone owner.");
@@ -1314,8 +1283,6 @@ public class ConfigManager {
             if (mat != null)
                 customRightClick.add(mat);
         }
-
-        VisualizerConfig.loadConfig(c);
 
         c.addComment("Global.GUI.Enabled", "Enable or disable flag GUI");
         useFlagGUI = c.get("Global.GUI.Enabled", true);
@@ -1666,7 +1633,7 @@ public class ConfigManager {
         return NoWaterPlace;
     }
 
-    public List<Material> getLwcMatList() {
+    public Set<Material> getLwcMatList() {
         return LwcMatList;
     }
 
@@ -1712,20 +1679,22 @@ public class ConfigManager {
 
     @Deprecated
     public int getInfoToolID() {
-        return infoTool.getId();
+        return -1;
     }
 
+    @Deprecated
     public CMIMaterial getInfoTool() {
-        return infoTool;
+        return SelectionManager.getInfoTool();
     }
 
+    @Deprecated
     public CMIMaterial getSelectionTool() {
-        return selectionTool;
+        return SelectionManager.getTool();
     }
 
     @Deprecated
     public int getSelectionTooldID() {
-        return selectionTool.getId();
+        return -1;
     }
 
     public boolean getOpsAreAdmins() {
@@ -1970,16 +1939,19 @@ public class ConfigManager {
         return enableDebug;
     }
 
+    @Deprecated
     public boolean isSelectionIgnoreY() {
-        return SelectionIgnoreY;
+        return SelectionManager.isIgnoreY();
     }
 
+    @Deprecated
     public boolean isSelectionIgnoreYInSubzone() {
-        return SelectionIgnoreYInSubzone;
+        return SelectionManager.isIgnoreYInSubzone();
     }
 
+    @Deprecated
     public boolean isNoCostForYBlocks() {
-        return NoCostForYBlocks;
+        return SelectionManager.isNoCostForYBlocks();
     }
 
     public boolean versionCheck() {
@@ -1994,19 +1966,19 @@ public class ConfigManager {
 //        return OfflineMode;
 //    }
 
-    public List<Material> getCustomContainers() {
+    public Set<Material> getCustomContainers() {
         return customContainers;
     }
 
-    public List<Material> getCustomBothClick() {
+    public Set<Material> getCustomBothClick() {
         return customBothClick;
     }
 
-    public List<Material> getCustomRightClick() {
+    public Set<Material> getCustomRightClick() {
         return customRightClick;
     }
 
-    public List<Material> getCleanBlocks() {
+    public Set<Material> getCleanBlocks() {
         return CleanBlocks;
     }
 
@@ -2026,10 +1998,12 @@ public class ConfigManager {
         return BlockFallWorlds;
     }
 
+    @Deprecated
     public List<String> getNegativePotionEffects() {
         return NegativePotionEffects;
     }
 
+    @Deprecated
     public List<String> getNegativeLingeringPotionEffects() {
         return NegativeLingeringPotionEffects;
     }
@@ -2138,8 +2112,9 @@ public class ConfigManager {
         return guiBottonStates.get(state);
     }
 
+    @Deprecated
     public int getSelectionNetherHeight() {
-        return SelectionNetherHeight;
+        return SelectionManager.getNetherHeight();
     }
 
     public boolean isInfoExcludeDFlags() {
@@ -2218,8 +2193,9 @@ public class ConfigManager {
         return ARCRatioConfirmation;
     }
 
+    @Deprecated
     public boolean isWorldEditIntegration() {
-        return WorldEditIntegration;
+        return SelectionManager.isWorldEditIntegration();
     }
 
     public int getSignsMaxPerResidence() {

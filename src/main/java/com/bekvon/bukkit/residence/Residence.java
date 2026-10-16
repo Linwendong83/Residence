@@ -66,7 +66,6 @@ import com.bekvon.bukkit.residence.listeners.ResidenceListener1_12;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_13;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_14;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_15;
-import com.bekvon.bukkit.residence.listeners.ResidenceListener1_16;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_16_5_Paper;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_17;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_19;
@@ -75,9 +74,12 @@ import com.bekvon.bukkit.residence.listeners.ResidenceListener1_21;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_21_8_Paper;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_21_8_Spigot;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener1_21_9_Paper;
+import com.bekvon.bukkit.residence.listeners.ResidenceListener26_1_2_Paper;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener26_2;
 import com.bekvon.bukkit.residence.listeners.ResidenceListener26_2_Paper;
+import com.bekvon.bukkit.residence.listeners.ResidenceListener26_3_Paper;
 import com.bekvon.bukkit.residence.listeners.ResidencePlayerListener;
+import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache_Legacy;
 import com.bekvon.bukkit.residence.permissions.PermissionManager;
 import com.bekvon.bukkit.residence.persistance.YMLSaveHelper;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
@@ -88,8 +90,8 @@ import com.bekvon.bukkit.residence.protection.PlayerManager;
 import com.bekvon.bukkit.residence.protection.ResidenceManager;
 import com.bekvon.bukkit.residence.protection.WorldFlagManager;
 import com.bekvon.bukkit.residence.raid.ResidenceRaidListener;
-import com.bekvon.bukkit.residence.selection.AutoSelection;
 import com.bekvon.bukkit.residence.selection.KingdomsUtil;
+import com.bekvon.bukkit.residence.selection.ComboSelection;
 import com.bekvon.bukkit.residence.selection.Schematics7Manager;
 import com.bekvon.bukkit.residence.selection.SelectionManager;
 import com.bekvon.bukkit.residence.selection.WESchematicManager;
@@ -166,7 +168,7 @@ public class Residence extends JavaPlugin {
     private WebMapManager webMapManager;
 
     private Sorting SortingManager;
-    private AutoSelection AutoSelectionManager;
+    private ComboSelection ComboSelectionManager;
     private WESchematicManager SchematicManager;
     private InformationPager InformationPagerManager;
     private WorldGuardInterface worldGuardUtil;
@@ -606,13 +608,8 @@ public class Residence extends JavaPlugin {
                 if (Version.isCurrentEqualOrHigher(Version.v1_15_0)) {
                     pm.registerEvents(new ResidenceListener1_15(this), this);
                 }
-                if (Version.isCurrentEqualOrHigher(Version.v1_16_0)) {
-                    pm.registerEvents(new ResidenceListener1_16(this), this);
-                }
-                if ((Version.isCurrentEqualOrHigher(Version.v1_16_R3) && Version.isCurrentSubEqualOrHigher(5)) || Version.isCurrentEqualOrHigher(Version.v1_17_0)) {
-                    if (Version.isPaperBranch()) {
-                        pm.registerEvents(new ResidenceListener1_16_5_Paper(this), this);
-                    }
+                if (Version.isCurrentEqualOrHigher(Version.v1_16_5) && Version.isPaperBranch()) {
+                    pm.registerEvents(new ResidenceListener1_16_5_Paper(this), this);
                 }
                 if (Version.isCurrentEqualOrHigher(Version.v1_17_0)) {
                     pm.registerEvents(new ResidenceListener1_17(this), this);
@@ -626,15 +623,18 @@ public class Residence extends JavaPlugin {
                 if (Version.isCurrentEqualOrHigher(Version.v1_21_0)) {
                     pm.registerEvents(new ResidenceListener1_21(this), this);
                 }
-                if ((Version.isCurrentEqualOrHigher(Version.v1_21_R5) && Version.isCurrentSubEqualOrHigher(8)) || Version.isCurrentEqualOrHigher(Version.v1_21_R6)) {
+                if (Version.isCurrentEqualOrHigher(Version.v1_21_8)) {
                     if (Version.isPaperBranch()) {
                         pm.registerEvents(new ResidenceListener1_21_8_Paper(this), this);
                     } else {
                         pm.registerEvents(new ResidenceListener1_21_8_Spigot(this), this);
                     }
                 }
-                if (Version.isCurrentEqualOrHigher(Version.v1_21_R6) && Version.isPaperBranch()) {
+                if (Version.isCurrentEqualOrHigher(Version.v1_21_9) && Version.isPaperBranch()) {
                     pm.registerEvents(new ResidenceListener1_21_9_Paper(this), this);
+                }
+                if (Version.isCurrentEqualOrHigher(Version.v26_1_2) && Version.isPaperBranch()) {
+                    pm.registerEvents(new ResidenceListener26_1_2_Paper(this), this);
                 }
                 if (Version.isCurrentEqualOrHigher(Version.v26_2_0)) {
                     if (Version.isPaperBranch()) {
@@ -642,12 +642,18 @@ public class Residence extends JavaPlugin {
                     }
                     pm.registerEvents(new ResidenceListener26_2(this), this);
                 }
+                if (Version.isCurrentEqualOrHigher(Version.v26_3_0) && Version.isPaperBranch()) {
+                    pm.registerEvents(new ResidenceListener26_3_Paper(this), this);
+                }
                 pm.registerEvents(new ResidenceBlockListener(this), this);
                 pm.registerEvents(getPlayerListener(), this);
                 pm.registerEvents(new ResidenceEntityListener(this), this);
                 pm.registerEvents(new ShopListener(this), this);
                 pm.registerEvents(new ResidenceRaidListener(), this);
 
+                if (Version.isCurrentLower(Version.v1_16_0)) {
+                    pm.registerEvents(new DenyMessageCache_Legacy(), this);
+                }
                 firstenable = false;
             } else {
                 getPlayerListener().reload();
@@ -745,10 +751,10 @@ public class Residence extends JavaPlugin {
                     lm.consoleMessage("Found WorldEdit " + plugin.getDescription().getVersion() + " but version 6.x is not supported!");
                     return;
                 }
-                
+
                 this.wep = (com.sk89q.worldedit.bukkit.WorldEditPlugin) plugin;
 
-                if (getConfigManager().isWorldEditIntegration())
+                if (SelectionManager.isWorldEditIntegration())
                     smanager = new WorldEdit7SelectionManager(server, this);
                 if (wep != null)
                     SchematicManager = new Schematics7Manager(this);
@@ -853,10 +859,12 @@ public class Residence extends JavaPlugin {
         return SchematicManager;
     }
 
-    public AutoSelection getAutoSelectionManager() {
-        if (AutoSelectionManager == null)
-            AutoSelectionManager = new AutoSelection(this);
-        return AutoSelectionManager;
+
+    public ComboSelection getComboSelectionManager() {
+        if (ComboSelectionManager == null) {
+            ComboSelectionManager = new ComboSelection(this);
+        }
+        return ComboSelectionManager;
     }
 
     public Sorting getSortingManager() {

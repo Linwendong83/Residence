@@ -275,7 +275,7 @@ public class FlagPermissions {
             if (one.containsCriteria(CMIMC.POTTED))
                 addMaterialToUseFlag(one.getMaterial(), Flags.flowerpot);
 
-            if (Version.isCurrentEqualOrHigher(Version.v1_17_R1)) {
+            if (Version.isCurrentEqualOrHigher(Version.v1_17_0)) {
                 if (one.containsCriteria(CMIMC.CANDLE))
                     addMaterialToUseFlag(one.getMaterial(), Flags.use);
 
@@ -283,7 +283,7 @@ public class FlagPermissions {
                     addMaterialToUseFlag(one.getMaterial(), Flags.cake);
             }
 
-            if (Version.isCurrentEqualOrHigher(Version.v1_21_R6)) {
+            if (Version.isCurrentEqualOrHigher(Version.v1_21_9)) {
                 if (one.containsCriteria(CMIMC.COPPERCHEST))
                     addMaterialToUseFlag(one.getMaterial(), Flags.container);
 
@@ -330,7 +330,7 @@ public class FlagPermissions {
 
         addMaterialToUseFlag(CMIMaterial.CRAFTING_TABLE.getMaterial(), Flags.table);
 
-        if (Version.isCurrentEqualOrHigher(Version.v1_14_R1)) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_14_0)) {
             addMaterialToUseFlag(CMIMaterial.BARREL.getMaterial(), Flags.container);
             addMaterialToUseFlag(CMIMaterial.BLAST_FURNACE.getMaterial(), Flags.container);
             addMaterialToUseFlag(CMIMaterial.CARTOGRAPHY_TABLE.getMaterial(), Flags.cartography);
@@ -346,19 +346,25 @@ public class FlagPermissions {
             addMaterialToUseFlag(CMIMaterial.BELL.getMaterial(), Flags.use);
             addMaterialToUseFlag(CMIMaterial.CAMPFIRE.getMaterial(), Flags.use);
             addMaterialToUseFlag(CMIMaterial.LECTERN.getMaterial(), Flags.use);
+            addMaterialToUseFlag(CMIMaterial.SWEET_BERRY_BUSH.getMaterial(), Flags.harvest);
         }
 
-        if (Version.isCurrentEqualOrHigher(Version.v1_16_R1)) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_16_0)) {
             addMaterialToUseFlag(CMIMaterial.RESPAWN_ANCHOR.getMaterial(), Flags.anchor);
             addMaterialToUseFlag(CMIMaterial.SOUL_CAMPFIRE.getMaterial(), Flags.use);
         }
 
-        if (Version.isCurrentEqualOrHigher(Version.v1_20_R1)) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_17_0)) {
+            addMaterialToUseFlag(CMIMaterial.CAVE_VINES.getMaterial(), Flags.harvest);
+            addMaterialToUseFlag(CMIMaterial.CAVE_VINES_PLANT.getMaterial(), Flags.harvest);
+        }
+
+        if (Version.isCurrentEqualOrHigher(Version.v1_20_0)) {
             addMaterialToUseFlag(CMIMaterial.CHISELED_BOOKSHELF.getMaterial(), Flags.container);
             addMaterialToUseFlag(CMIMaterial.DECORATED_POT.getMaterial(), Flags.container);
         }
 
-        if (Version.isCurrentEqualOrHigher(Version.v1_21_R1)) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_21_0)) {
             addMaterialToUseFlag(CMIMaterial.CRAFTER.getMaterial(), Flags.table);
         }
 
@@ -1725,7 +1731,7 @@ public class FlagPermissions {
         ClaimedResidence res = Residence.getInstance().getResidenceManager().getByLoc(loc);
         if (res != null)
             return res.getPermissions();
-        return Residence.getInstance().getWorldFlags().getPerms(loc.getWorld().getName());
+        return Residence.getInstance().getWorldFlags().getPerms(loc.getWorld());
     }
 
     public static FlagPermissions getPerms(Player player) {
@@ -1733,12 +1739,12 @@ public class FlagPermissions {
     }
 
     public static FlagPermissions getPerms(Location loc, Player player) {
-        ClaimedResidence res = Residence.getInstance().getResidenceManager().getByLoc(loc);
+        ClaimedResidence res = ClaimedResidence.getByLoc(loc);
         if (res != null)
             return res.getPermissions();
         if (player != null)
             return Residence.getInstance().getWorldFlags().getPerms(player);
-        return Residence.getInstance().getWorldFlags().getPerms(loc.getWorld().getName());
+        return Residence.getInstance().getWorldFlags().getPerms(loc.getWorld());
     }
 
     public static FlagPermissions getPerms(World world) {
@@ -1765,7 +1771,7 @@ public class FlagPermissions {
         return !flag.isGlobalyEnabled() || Residence.getInstance().isDisabledWorldListener(world);
     }
 
-    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Location target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Location target, @NotNull Flags mainFlag, @Nullable Flags subFlag, boolean shouldNotify) {
         if (player.hasMetadata("NPC")) {
             return false;
         }
@@ -1776,16 +1782,38 @@ public class FlagPermissions {
         if (perms.playerHas(player, mainFlag, result) || ResAdmin.isResAdmin(player)) {
             return false;
         }
-        // if mainFlag state is false, deny and notify the player
-        lm.Flag_Deny.sendMessage(player, mainFlag);
+        // if mainFlag state is false, deny (and notify if requested)
+        if (shouldNotify) {
+            lm.Flag_Deny.sendMessage(player, mainFlag);
+        }
         return true;
     }
 
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Block target, @NotNull Flags mainFlag, @Nullable Flags subFlag, boolean shouldNotify) {
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag, shouldNotify);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Entity target, @NotNull Flags mainFlag, @Nullable Flags subFlag, boolean shouldNotify) {
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag, shouldNotify);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Location target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
+        return shouldDenyAndNotify(player, target, mainFlag, subFlag, true);
+    }
+
     public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Block target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
-        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag);
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag, true);
     }
 
     public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Entity target, @NotNull Flags mainFlag, @Nullable Flags subFlag) {
-        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag);
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, subFlag, true);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Entity target, @NotNull Flags mainFlag) {
+        return shouldDenyAndNotify(player, target.getLocation(), mainFlag, null, true);
+    }
+
+    public static boolean shouldDenyAndNotify(@NotNull Player player, @NotNull Flags mainFlag) {
+        return shouldDenyAndNotify(player, player.getLocation(), mainFlag, null, true);
     }
 }

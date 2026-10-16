@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache;
+import com.bekvon.bukkit.residence.listenersCache.DenyMessageCache_Legacy;
 
 import net.Zrips.CMILib.ActionBar.CMIActionBar;
 import net.Zrips.CMILib.Colors.CMIChatColor;
@@ -94,10 +95,19 @@ public enum lm {
     Select_Secondary("&eSecondary selection: &6%1"),
     Select_TooHigh("&cWarning, selection went above top of map, limiting."),
     Select_TooLow("&cWarning, selection went below bottom of map, limiting."),
-    Select_TotalSize("&eSelection total size: &6%1"),
-    Select_AutoEnabled("&eAuto selection mode turned &6ON&e. To disable it write &6/res select auto"),
-    Select_AutoDisabled("&eAuto selection mode turned &6OFF&e. To enable it again write &6/res select auto"),
+    Select_TotalSize("&eSelection total size: &6%1"),    
     Select_Disabled("&cYou don't have access to selections commands"),
+
+    Select_AutoMoveDisabled("&eAuto selection mode on move turned &6OFF"),
+    Select_MoveExpand("&6Expand on move: %1"),
+    Select_RangeInteract("&6Range interact: %1"),
+    Select_MouseScroll("&6Mouse scroll: %1"),
+    Select_SmartTool("&6Smart tool selection: %1"),
+    Select_GroupLimits("&6Consider group limits: %1"),
+    Select_ComboEnabled("&6Combo active: %1"),
+    Select_BossBar("%1Move &6| %2Interact &6| %3Mouse &6| %4Group &6| %5Smart"),
+    Select_Show("&6Show selection"),  
+    
 
     Schematic_NoSchematic("&6No Residence schematic found!"),
     Schematic_Saved("&6Residence schematic saved!"),
@@ -615,18 +625,21 @@ public enum lm {
         return Residence.getInstance().getLM().getMessageList(this);
     }
 
+    private boolean shouldSendDenyMessage(Player player, Flags flag) {
+        if (Version.isCurrentEqualOrHigher(Version.v1_16_0)) {
+            return DenyMessageCache.shouldSendDenyMessage(player, flag);
+        } else {
+            return DenyMessageCache_Legacy.shouldSendDenyMessage(player, flag);
+        }
+    }
+
     public void sendMessage(Player player, Flags flag) {
         if (player == null || flag == null) {
             return;
         }
-        if (Version.isCurrentLower(Version.v1_16_0)) {
+        int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
+        if (cooldownSeconds <= 0 || shouldSendDenyMessage(player, flag)) {
             lm.Flag_Deny.sendMessage((CommandSender) player, flag);
-
-        } else {
-            int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
-            if (cooldownSeconds <= 0 || DenyMessageCache.shouldSendDenyMessage(player, flag)) {
-                lm.Flag_Deny.sendMessage((CommandSender) player, flag);
-            }
         }
     }
 
@@ -634,14 +647,9 @@ public enum lm {
         if (player == null || flag == null) {
             return;
         }
-        if (Version.isCurrentLower(Version.v1_16_0)) {
+        int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
+        if (cooldownSeconds <= 0 || shouldSendDenyMessage(player, flag)) {
             lm.Residence_FlagDeny.sendMessage((CommandSender) player, flag, string);
-
-        } else {
-            int cooldownSeconds = Residence.getInstance().getConfigManager().getFlagDenyMessageCooldown();
-            if (cooldownSeconds <= 0 || DenyMessageCache.shouldSendDenyMessage(player, flag)) {
-                lm.Residence_FlagDeny.sendMessage((CommandSender) player, flag, string);
-            }
         }
     }
 

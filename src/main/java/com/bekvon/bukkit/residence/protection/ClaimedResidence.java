@@ -55,6 +55,7 @@ import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagCombo;
 import com.bekvon.bukkit.residence.protection.FlagPermissions.FlagState;
 import com.bekvon.bukkit.residence.protection.ResidenceManager.ChunkRef;
 import com.bekvon.bukkit.residence.raid.ResidenceRaid;
+import com.bekvon.bukkit.residence.selection.SelectionManager;
 import com.bekvon.bukkit.residence.shopStuff.ShopVote;
 import com.bekvon.bukkit.residence.signsStuff.Signs;
 import com.bekvon.bukkit.residence.utils.LocationCheck;
@@ -321,7 +322,7 @@ public class ClaimedResidence {
             return false;
         }
 
-        if (!Residence.getInstance().getConfigManager().isSelectionIgnoreY() && area.getYSize() > group.getMaxYSize()) {
+        if (!SelectionManager.isIgnoreY() && area.getYSize() > group.getMaxYSize()) {
             lm.Area_ToBigY.sendMessage(player, area.getYSize(), group.getMaxYSize());
             return false;
         }
@@ -943,7 +944,7 @@ public class ClaimedResidence {
     public long getTotalSize() {
         Collection<CuboidArea> set = getAreaMap().values();
         long size = 0;
-        if (!Residence.getInstance().getConfigManager().isNoCostForYBlocks())
+        if (!SelectionManager.isNoCostForYBlocks())
             for (CuboidArea entry : set) {
                 size += entry.getSize();
             }
@@ -1689,6 +1690,8 @@ public class ClaimedResidence {
                 // person
                 if (subres.getParent() != null && !subres.getOwnerUUID().equals(subres.getParent().getOwnerUUID()))
                     Residence.getInstance().getPlayerManager().addResidence(subres.getOwnerUUID(), subres);
+                else
+                    Residence.getInstance().getPlayerManager().addTrustedPlayers(subres);
 
                 res.subzones.put(map.getKey().toLowerCase(), subres);
             }
